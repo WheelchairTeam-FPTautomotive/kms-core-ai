@@ -1,0 +1,22 @@
+[project]
+name = "kms-core-ai"
+version = "0.1.0"
+description = "Core AI RAG Engine microservice for Automotive Documentation"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.28.0",
+    "pydantic[email]>=2.6.4",
+    "pydantic-settings>=2.2.1",
+    "requests>=2.31.0",
+    "openai>=1.14.1",
+    "chromadb>=0.4.24",
+    "pypdf>=4.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.1.1",
+    "ruff>=0.3.3",
+]

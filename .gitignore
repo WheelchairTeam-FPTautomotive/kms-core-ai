@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# KMS Core AI — Project specific
+data/chroma_db/
+outputs/
