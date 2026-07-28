@@ -20,3 +20,8 @@ dev = [
     "pytest>=8.1.1",
     "ruff>=0.3.3",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# solve_problem.py is intentionally kept in sync with the reference repo.
+# Legacy typing and Vietnamese strings are preserved by design.
+"src/pipelines/solve_problem.py" = ["I001", "UP035", "UP006", "F401", "F541"]

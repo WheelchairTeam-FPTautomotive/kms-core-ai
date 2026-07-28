@@ -3,6 +3,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from pipelines.solve_problem import solve_automotive_query
+from utils.logger import setup_logger
+
+logger = setup_logger("kms_core_api")
 
 app = FastAPI(
     title="KMS Core AI RAG Engine",
@@ -32,13 +35,14 @@ class SearchResponse(BaseModel):
 # ==========================================
 # Endpoints
 # ==========================================
+@app.get("/health")
+async def root_health_check():
+    return {"status": "ready", "service": "kms-core-ai"}
+
+
 @app.get("/api/v1/health")
 async def health_check():
     return {"status": "ready", "service": "kms-core-ai"}
-
-from utils.logger import setup_logger
-
-logger = setup_logger("kms_core_api")
 
 
 @app.post("/api/v1/search", response_model=SearchResponse)
