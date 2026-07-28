@@ -18,7 +18,7 @@ This is the Core AI RAG (Retrieval-Augmented Generation) Engine for the **Tracea
 Before you begin, ensure the following are installed on your machine:
 
 | Tool | Version | Install |
-|------|---------|---------|
+| ---- | ------- | ------- |
 | **Python** | 3.12+ | [python.org/downloads](https://www.python.org/downloads/) |
 | **uv** | latest | `pip install uv` |
 | **Git** | any | [git-scm.com](https://git-scm.com/) |
@@ -34,7 +34,7 @@ uv --version       # should print uv x.x.x
 
 ## Folder Structure
 
-```
+```text
 kms-core-ai/
 ├── data/
 │   ├── docs_pdf/          # Place PDF manuals here
@@ -98,7 +98,7 @@ LOG_LEVEL=INFO                 # Logging verbosity: DEBUG | INFO | WARNING | ERR
 
 Place all automotive PDF manuals into the `data/docs_pdf/` folder before running the server:
 
-```
+```text
 kms-core-ai/
 └── data/
     └── docs_pdf/
