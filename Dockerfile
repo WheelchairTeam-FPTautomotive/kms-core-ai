@@ -29,6 +29,11 @@ FROM python:3.12-slim AS runtime
 RUN groupadd --gid 1000 appuser && \
     useradd --uid 1000 --gid appuser --create-home --shell /bin/bash appuser
 
+# Install gosu so the entrypoint can drop from root to appuser at runtime.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gosu && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy the prepared virtual environment from the builder stage.
@@ -42,12 +47,17 @@ ENV PATH="/app/.venv/bin:$PATH" \
 # Copy application source code.
 COPY src/ ./src/
 
+# Copy helper scripts (e.g., privilege-dropping entrypoint).
+COPY scripts/ ./scripts/
+
 # Runtime directories for vector DB, logs, and evaluator outputs.
 RUN mkdir -p /app/data /app/logs /app/outputs && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app && \
+    chmod +x /app/scripts/entrypoint.sh
 
-# Switch to non-root user before starting the application.
-USER appuser
+# The container starts as root so the entrypoint can fix bind-mount ownership,
+# then it drops to appuser before running the application.
+USER root
 
 # Expose the Core AI service port.
 EXPOSE 8001
@@ -55,6 +65,9 @@ EXPOSE 8001
 # Health check aligned with the starter-kit pattern (30s interval).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')" || exit 1
+
+# Use the entrypoint to drop privileges after fixing runtime permissions.
+ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 
 # Launch Uvicorn via the Python module runner to avoid shebang mismatches
 # between multi-stage build layers. --app-dir src adds src/ to PYTHONPATH so
