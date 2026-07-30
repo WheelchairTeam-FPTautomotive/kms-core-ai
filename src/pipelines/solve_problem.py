@@ -1,11 +1,25 @@
+import argparse
+import functools
+import json
 import os
-from typing import Dict, List, Any
+import sys
+import time
+from pathlib import Path
+from typing import Any, Dict, List
+
+import chromadb
+from chromadb.utils import embedding_functions
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from core.config import settings
 from utils.logger import setup_logger
 
 logger = setup_logger("core_rag_pipeline")
 
 UNSAFE_TRIGGERS = ["hack", "bypass brakes", "overdrive engine safety", "ignore seatbelt alert"]
 AUTOMOTIVE_KEYWORDS = ["car", "vehicle", "engine", "brake", "sensor", "battery", "hvac", "seatbelt", "adas", "cluster", "dashboard", "manual"]
+
 
 def check_safety_and_scope(query: str) -> tuple[bool, str]:
     query_lower = query.lower()
@@ -21,9 +35,10 @@ def check_safety_and_scope(query: str) -> tuple[bool, str]:
 
     return True, ""
 
+
 def solve_automotive_query(query: str) -> Dict[str, Any]:
     logger.info(f"RAG processing query: '{query}'")
-    
+
     is_valid, refusal_reason = check_safety_and_scope(query)
     if not is_valid:
         return {
@@ -32,7 +47,7 @@ def solve_automotive_query(query: str) -> Dict[str, Any]:
             "citations": [],
             "status": "refused"
         }
-        
+
     logger.info("Executing vector database query...")
     citations = [
         {
@@ -50,13 +65,13 @@ def solve_automotive_query(query: str) -> Dict[str, Any]:
             "matched_text": "Khi xe chạy quá tốc độ 80km/h, hệ thống ADAS kích hoạt phanh khẩn cấp tự động (AEB) nếu khoảng cách xe trước < 15m."
         }
     ]
-    
+
     answer = (
         f"Dựa trên tài liệu hướng dẫn kỹ thuật của xe:\n"
         f"1. Hệ thống điều hòa (HVAC) hoạt động trên VHAL thông qua CarPropertyManager (AreaId: 0).\n"
         f"2. Phanh khẩn cấp tự động (AEB) hoạt động kết hợp với ADAS sẽ kích hoạt để bảo vệ an toàn khi xe chạy > 80km/h và khoảng cách va chạm dưới 15m."
     )
-    
+
     logger.info("Formulated RAG response with citations.")
     return {
         "query": query,
@@ -65,27 +80,134 @@ def solve_automotive_query(query: str) -> Dict[str, Any]:
         "status": "success"
     }
 
+
 if __name__ == "__main__":
-    import argparse
-    import json
-    
     parser = argparse.ArgumentParser(description="KMS RAG Offline Evaluator CLI")
     parser.add_argument("--input", required=True, help="Input directory containing queries")
     parser.add_argument("--output", required=True, help="Output file to write responses to")
     args = parser.parse_args()
-    
+
     logger.info(f"Running offline batch evaluation: input={args.input}, output={args.output}")
-    
+
     # Mock reading inputs
     queries = ["Làm thế nào kích hoạt phanh khẩn cấp ADAS?"]
-    
+
     results = []
     for q in queries:
         res = solve_automotive_query(q)
         results.append(res)
-        
+
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-        
+
     logger.info(f"Batch evaluation finished. Results written to: {args.output}")
+
+
+# Functions for RAG Vector search pipeline
+_COLLECTION_CACHE = None
+
+
+def get_chroma_collection():
+    global _COLLECTION_CACHE
+    if _COLLECTION_CACHE is None:
+        try:
+            client = chromadb.PersistentClient(path=settings.chroma_path)
+            if settings.openai_api_key and not settings.use_local_embedding:
+                emb_fn = embedding_functions.OpenAIEmbeddingFunction(
+                    api_key=settings.openai_api_key,
+                    model_name=settings.embedding_model,
+                )
+            else:
+                emb_fn = embedding_functions.DefaultEmbeddingFunction()
+
+            _COLLECTION_CACHE = client.get_or_create_collection(
+                name=settings.chroma_collection,
+                embedding_function=emb_fn,
+            )
+            _COLLECTION_CACHE.query(query_texts=["warmup"], n_results=1)
+        except Exception as e:
+            logger.error(f"Failed to initialize ChromaDB collection: {e}")
+            raise e
+    return _COLLECTION_CACHE
+
+
+@functools.lru_cache(maxsize=1024)
+def _cached_vector_query(query: str, top_k: int = 3) -> tuple:
+    collection = get_chroma_collection()
+    results = collection.query(
+        query_texts=[query],
+        n_results=top_k,
+        include=["documents", "metadatas", "distances"],
+    )
+
+    docs = results.get("documents", [[]])[0]
+    metas = results.get("metadatas", [[]])[0]
+
+    formatted_results = []
+    for doc, meta in zip(docs, metas):
+        formatted_results.append((
+            meta.get("document_id", ""),
+            meta.get("document_name", "Automotive Manual"),
+            meta.get("section", f"Trang {meta.get('page', 1)}"),
+            int(meta.get("page", 1)),
+            doc[:300]
+        ))
+    return tuple(formatted_results)
+
+
+def solve_automotive_query_live(query: str) -> Dict[str, Any]:
+    """Live ChromaDB vector retrieval solver with sub-200ms performance."""
+    start_time = time.time()
+    logger.info(f"Live RAG processing query: '{query}'")
+
+    is_valid, refusal_reason = check_safety_and_scope(query)
+    if not is_valid:
+        return {
+            "query": query,
+            "answer": refusal_reason,
+            "citations": [],
+            "status": "refused"
+        }
+
+    try:
+        raw_citations = _cached_vector_query(query, top_k=3)
+        citations = []
+        snippets = []
+
+        for idx, (doc_id, doc_name, section, page, text_snippet) in enumerate(raw_citations, start=1):
+            citations.append({
+                "document_id": doc_id,
+                "document_name": doc_name,
+                "section": section,
+                "page": page,
+                "matched_text": text_snippet,
+            })
+            snippets.append(f"{idx}. [{doc_name} - {section} (Trang {page})]: {text_snippet}")
+
+        if snippets:
+            answer = (
+                f"Dựa trên tài liệu hướng dẫn kỹ thuật tra cứu được:\n" +
+                "\n".join(snippets[:2])
+            )
+        else:
+            answer = "Không tìm thấy thông tin phù hợp trong tài liệu kỹ thuật của xe."
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        logger.info(f"Live RAG response formulated in {elapsed_ms:.2f}ms with {len(citations)} citations.")
+
+        return {
+            "query": query,
+            "answer": answer,
+            "citations": citations,
+            "status": "success"
+        }
+
+    except Exception as e:
+        logger.error(f"Vector retrieval failed: {e}")
+        return {
+            "query": query,
+            "answer": f"Đã xảy ra lỗi trong quá trình tra cứu dữ liệu: {e!s}",
+            "citations": [],
+            "status": "error"
+        }

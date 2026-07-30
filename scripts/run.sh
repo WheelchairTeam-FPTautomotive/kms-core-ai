@@ -27,7 +27,7 @@ echo "Input Directory: $INPUT_DIR"
 echo "Output File: $OUTPUT_FILE"
 echo "=========================================================="
 
-mkdir -p "$(dirname "$OUTPUT_FILE")"
+export PYTHONPATH="src:${PYTHONPATH}"
 
 # Execute Python pipeline CLI
 python -m pipelines.solve_problem --input "$INPUT_DIR" --output "$OUTPUT_FILE"
