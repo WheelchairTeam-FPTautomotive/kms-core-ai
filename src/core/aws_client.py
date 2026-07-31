@@ -80,5 +80,6 @@ def get_opensearch_client() -> OpenSearch:
         use_ssl=True,
         verify_certs=True,
         connection_class=RequestsHttpConnection,
+        timeout=120,
     )
     return client

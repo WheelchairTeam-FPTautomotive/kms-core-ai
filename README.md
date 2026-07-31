@@ -9,8 +9,9 @@ This is the Core AI RAG (Retrieval-Augmented Generation) Engine for the **Tracea
 * **Language**: Python 3.12+
 * **Package Manager**: `uv`
 * **Framework**: FastAPI (exposes internal REST interface on port `8001`)
-* **Core Libraries**: ChromaDB, tiktoken (`cl100k_base`), PyPDF, OpenAI, pydantic-settings, pytest
-* **Embedding Model**: Default Local ONNX `all-MiniLM-L6-v2` / OpenAI Embedding ($0 cost local inference option)
+* **Vector Store & Cloud Services**: AWS OpenSearch Serverless (AOSS), AWS Bedrock (Nova / Titan Embeddings), ChromaDB (fallback)
+* **Core Libraries**: `opensearch-py`, `boto3`, `tiktoken` (`cl100k_base`), PyPDF, pydantic-settings, pytest
+* **Embedding Model**: AWS Bedrock Titan Embeddings v2 (`amazon.titan-embed-text-v2:0`) / ONNX Local
 * **Performance SLA**: **< 150ms** Average Query Latency
 
 ---
@@ -41,23 +42,29 @@ kms-core-ai/
 ├── data/
 │   ├── docs_pdf/          # Raw automotive PDF manuals
 │   ├── docs_corpus/       # Transcribed text manuals & mapping.json
-│   └── chroma_db/         # Persistent ChromaDB vector store (5,532 chunks)
+│   └── chroma_db/         # Persistent ChromaDB vector store (local fallback)
 ├── outputs/               # Solution output json/csv artifacts
 ├── logs/                  # Rotating log files (auto-generated)
 ├── src/
 │   ├── __init__.py
 │   ├── main.py            # API server entrypoint (port 8001)
 │   ├── core/
+│   │   ├── aws_client.py  # AWS Bedrock & OpenSearch client initializers
 │   │   └── config.py      # Centralized pydantic-settings config
 │   ├── pipelines/
+│   │   ├── bedrock_rag.py # AWS Bedrock + OpenSearch k-NN RAG pipeline
 │   │   ├── chunker.py     # 512-token sliding window chunker (64 overlap)
-│   │   ├── ingest.py      # Batch PDF & mapping.json vector indexer
-│   │   └── solve_problem.py # Retrieval, safety checks & citation mapping
+│   │   ├── ingest.py      # Batch PDF vector indexer (ChromaDB / OpenSearch)
+│   │   └── solve_problem.py # Router, safety checks & citation mapping
 │   └── utils/
-│       └── logger.py      # Console and log rotation
+│       ├── logger.py      # Console and log rotation
+│       └── opensearch_utils.py # OpenSearch index mapping & k-NN query utils
 ├── tests/
-│   ├── test_chunker.py    # Unit tests for token sliding window chunking
-│   └── test_latency.py    # Sub-200ms latency benchmark SLA test
+│   ├── test_api.py            # Manual API search endpoint UTF-8 test script
+│   ├── test_aws_opensearch.py # AWS OpenSearch index & connection tests
+│   ├── test_bedrock_rag.py    # AWS Bedrock embedding & RAG pipeline tests
+│   ├── test_chunker.py        # Unit tests for token sliding window chunking
+│   └── test_latency.py        # Sub-200ms latency benchmark SLA test
 ├── scripts/
 │   └── run.sh             # Evaluator contract bash wrapper
 ├── .env.example           # Environment variable template
@@ -95,14 +102,25 @@ Copy-Item .env.example .env
 Then open `.env` and configure the required settings:
 
 ```env
-OPENAI_API_KEY=sk-...                   # Optional: OpenAI API key
-CHROMA_PATH=data/chroma_db              # Persistent ChromaDB storage path
-CHROMA_COLLECTION=automotive_manuals   # ChromaDB collection name
-CHUNK_WINDOW=512                        # Token window size
-CHUNK_OVERLAP=64                        # Token overlap size
-USE_LOCAL_EMBEDDING=true                # Use ONNX local embedding model ($0 cost)
-PORT=8001                               # FastAPI server port
-LOG_LEVEL=INFO                          # Logging verbosity
+# AWS & Vector DB Settings
+VECTOR_DB_TYPE=opensearch               # opensearch | chroma
+AWS_REGION=ap-southeast-2
+AWS_ACCESS_KEY_ID=AKIA...
+AWS_SECRET_ACCESS_KEY=...
+OPENSEARCH_ENDPOINT=https://<collection-id>.ap-southeast-2.aoss.amazonaws.com
+OPENSEARCH_INDEX=automotive-manuals
+
+# Bedrock Models
+BEDROCK_MODEL_ID=global.amazon.nova-2-lite-v1:0
+BEDROCK_EMBEDDING_MODEL_ID=amazon.titan-embed-text-v2:0
+
+# Local ChromaDB Fallback
+CHROMA_PATH=data/chroma_db
+CHROMA_COLLECTION=automotive_manuals
+CHUNK_WINDOW=512
+CHUNK_OVERLAP=64
+PORT=8001
+LOG_LEVEL=INFO
 ```
 
 ---
@@ -112,21 +130,24 @@ LOG_LEVEL=INFO                          # Logging verbosity
 Before running queries, populate the vector collection by running the PDF ingestion pipeline:
 
 ```bash
-# Ingest PDF manuals & corpus text into ChromaDB
-uv run python src/pipelines/ingest.py
+# Ingest PDF manuals into Amazon OpenSearch Serverless (Default)
+uv run python src/pipelines/ingest.py --target opensearch
+
+# Ingest PDF manuals into local ChromaDB (Fallback)
+uv run python src/pipelines/ingest.py --target chroma
 ```
 
 To reset and re-index the collection from scratch:
 
 ```bash
-uv run python src/pipelines/ingest.py --reset
+uv run python src/pipelines/ingest.py --target opensearch --reset
 ```
 
 > **Pipeline Features:**
 > - Automatically parses raw PDF manuals from `data/docs_pdf/`.
 > - Resolves document SHA-256 IDs to human-readable manual titles using `data/docs_corpus/mapping.json`.
 > - Splits text using `tiktoken` into **512-token chunks** with a **64-token overlap**.
-> - Persists embeddings into ChromaDB collection `automotive_manuals`.
+> - Vectorizes chunks using AWS Bedrock Titan Embeddings v2 and indexes into Amazon OpenSearch Serverless.
 
 ---
 
@@ -148,9 +169,11 @@ The REST API will be available at `http://localhost:8001`.
 uv run pytest -s
 ```
 
-All 4 test suites verify:
+All test suites verify:
+- AWS OpenSearch index creation & k-NN retrieval.
+- AWS Bedrock Titan embedding generation & Nova/Claude synthesis.
 - Sliding window token boundaries (512 tokens with 64 overlap).
-- Vector search latency (< 200ms SLA, average ~148ms).
+- Vector search latency (< 200ms SLA).
 
 ### 2. Offline Evaluator CLI (`scripts/run.sh`)
 
