@@ -14,6 +14,9 @@ dependencies = [
     "chromadb>=0.4.24",
     "pypdf>=4.1.0",
     "tiktoken>=0.6.0",
+    "boto3>=1.34.0",
+    "opensearch-py>=2.4.0",
+    "requests-aws4auth>=1.2.3",
 ]
 
 [dependency-groups]
@@ -23,10 +26,20 @@ dev = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# solve_problem.py and other pipelines are intentionally kept in sync with the reference repo.
-# Legacy typing, blind exceptions, and Vietnamese strings are preserved by design.
-"src/pipelines/*.py" = ["BLE001", "SIM113", "S110", "I001", "UP035", "UP006", "F401", "F541", "F821"]
+# solve_problem.py is intentionally kept in sync with the reference repo.
+# Legacy typing and Vietnamese strings are preserved by design.
+"src/pipelines/solve_problem.py" = ["I001", "UP035", "UP006", "F401", "F541", "TRY201", "BLE001"]
+"src/pipelines/ingest.py" = ["BLE001", "S110", "F821", "TRY201", "SIM113"]
+"src/pipelines/bedrock_rag.py" = ["BLE001"]
+"src/core/aws_client.py" = ["TRY201", "BLE001"]
+"src/utils/opensearch_utils.py" = ["TRY201", "BLE001"]
+"src/pipelines/chunker.py" = ["SIM113"]
+
+
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+filterwarnings = [
+    "ignore::DeprecationWarning:chromadb.*"
+]
 

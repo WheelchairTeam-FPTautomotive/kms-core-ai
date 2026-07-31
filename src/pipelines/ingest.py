@@ -233,16 +233,92 @@ def run_ingestion(
     return total_chunks
 
 
+def run_ingestion_opensearch(
+    pdf_dir: str | Path = settings.docs_pdf_dir,
+    corpus_dir: str | Path = settings.docs_corpus_dir,
+    batch_size: int = 50,
+) -> int:
+    """Run full PDF ingestion pipeline inserting vectors into Amazon OpenSearch Serverless."""
+    from core.aws_client import generate_bedrock_embeddings, get_opensearch_client
+    from utils.opensearch_utils import bulk_index_chunks, ensure_opensearch_index
+
+    start_time = time.time()
+    logger.info("Starting OpenSearch Serverless PDF Ingestion Pipeline...")
+
+    hash_to_name = load_document_mapping(corpus_dir)
+    chunk_config = ChunkingConfig(
+        window=settings.chunk_window,
+        overlap=settings.chunk_overlap,
+    )
+
+    pdf_files: list[tuple[Path, str, str]] = []
+
+    corpus_path = Path(corpus_dir)
+    if corpus_path.exists():
+        for pdf_file in corpus_path.glob("*.pdf"):
+            doc_id = pdf_file.stem
+            doc_name = hash_to_name.get(doc_id, doc_id)
+            if not doc_name.endswith(".pdf"):
+                doc_name = f"{doc_name}.pdf"
+            pdf_files.append((pdf_file, doc_id, doc_name))
+
+    pdf_path = Path(pdf_dir)
+    processed_hashes = {doc_id for _, doc_id, _ in pdf_files}
+    if pdf_path.exists():
+        for pdf_file in pdf_path.glob("*.pdf"):
+            doc_name = pdf_file.name
+            doc_id = calculate_file_hash(pdf_file)
+            if doc_id not in processed_hashes:
+                pdf_files.append((pdf_file, doc_id, doc_name))
+                processed_hashes.add(doc_id)
+
+    logger.info(f"Found {len(pdf_files)} target PDF documents for OpenSearch ingestion.")
+
+    client = get_opensearch_client()
+    index_name = settings.opensearch_index
+    ensure_opensearch_index(client, index_name, dimension=1024)
+
+    total_chunks = 0
+    batch_chunks: list[TextChunk] = []
+
+    for file_idx, (pdf_file, doc_id, doc_name) in enumerate(pdf_files, start=1):
+        chunks = process_pdf_file(pdf_file, doc_id, doc_name, chunk_config)
+        logger.info(f"[{file_idx}/{len(pdf_files)}] Processed '{pdf_file.name}' -> {len(chunks)} chunks")
+
+        for chunk in chunks:
+            batch_chunks.append(chunk)
+            total_chunks += 1
+
+            if len(batch_chunks) >= batch_size:
+                texts = [c.text for c in batch_chunks]
+                embeddings = generate_bedrock_embeddings(texts)
+                bulk_index_chunks(client, index_name, batch_chunks, embeddings)
+                batch_chunks.clear()
+
+    if batch_chunks:
+        texts = [c.text for c in batch_chunks]
+        embeddings = generate_bedrock_embeddings(texts)
+        bulk_index_chunks(client, index_name, batch_chunks, embeddings)
+        batch_chunks.clear()
+
+    elapsed = time.time() - start_time
+    logger.info("=== OpenSearch Ingestion Complete ===")
+    logger.info(f"Processed Documents: {len(pdf_files)}")
+    logger.info(f"Total Chunks Stored: {total_chunks}")
+    logger.info(f"Time Taken: {elapsed:.2f} seconds")
+
+    return total_chunks
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="KMS Core AI PDF Ingestion Engine")
-    parser.add_argument(
-        "--reset",
-        action="store_true",
-        help="Reset ChromaDB collection before ingestion",
-    )
-    parser.add_argument(
-        "--batch-size", type=int, default=200, help="Batch size for ChromaDB upsert"
-    )
+    parser.add_argument("--reset", action="store_true", help="Reset ChromaDB collection before ingestion")
+    parser.add_argument("--batch-size", type=int, default=200, help="Batch size for ChromaDB upsert")
+    parser.add_argument("--target", type=str, default="chroma", choices=["chroma", "opensearch"], help="Vector database target engine")
     args = parser.parse_args()
 
-    run_ingestion(reset=args.reset, batch_size=args.batch_size)
+    if args.target == "opensearch" or settings.vector_db_type == "opensearch":
+        run_ingestion_opensearch(batch_size=args.batch_size)
+    else:
+        run_ingestion(reset=args.reset, batch_size=args.batch_size)
+

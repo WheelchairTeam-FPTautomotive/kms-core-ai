@@ -20,6 +20,17 @@ class Settings(BaseSettings):
     use_local_embedding: bool = True
     embedding_model: str = "text-embedding-3-small"
 
+    # AWS & OpenSearch Configuration
+    aws_region: str = "us-east-1"
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    aws_session_token: str = ""
+    opensearch_endpoint: str = ""
+    opensearch_index: str = "automotive-manuals"
+    bedrock_model_id: str = "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+    bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
+    vector_db_type: str = "chroma"  # 'chroma' or 'opensearch'
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

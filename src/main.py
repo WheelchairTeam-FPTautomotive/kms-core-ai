@@ -12,10 +12,6 @@ app = FastAPI(
     version="1.0.0",
 )
 
-
-# ==========================================
-# Pydantic Schemas
-# ==========================================
 class SearchRequest(BaseModel):
     query: str = Field(..., example="How do I activate the HVAC system?")
 
@@ -34,10 +30,6 @@ class SearchResponse(BaseModel):
     citations: list[CitationInfo]
     status: str
 
-
-# ==========================================
-# Endpoints
-# ==========================================
 @app.get("/health")
 async def root_health_check():
     return {"status": "ready", "service": "kms-core-ai"}

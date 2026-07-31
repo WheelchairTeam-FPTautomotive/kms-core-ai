@@ -133,9 +133,9 @@ if __name__ == "__main__":
     logger.info(f"Batch evaluation finished. Results written to: {args.output}")
 
 
+
 # Functions for RAG Vector search pipeline
 _COLLECTION_CACHE = None
-
 
 def get_chroma_collection():
     global _COLLECTION_CACHE
@@ -250,3 +250,16 @@ def solve_automotive_query_live(query: str) -> Dict[str, Any]:
             "citations": [],
             "status": "error",
         }
+
+
+def solve_automotive_query_auto(query: str) -> Dict[str, Any]:
+    """
+    Automatic router function dispatching queries to AWS Bedrock/OpenSearch or ChromaDB
+    based on settings.vector_db_type configuration.
+    """
+    if getattr(settings, "vector_db_type", "chroma") == "opensearch":
+        from pipelines.bedrock_rag import solve_automotive_query_bedrock
+        return solve_automotive_query_bedrock(query)
+
+    return solve_automotive_query_live(query)
+
