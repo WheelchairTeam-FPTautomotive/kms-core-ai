@@ -17,21 +17,44 @@ from utils.logger import setup_logger
 
 logger = setup_logger("core_rag_pipeline")
 
-UNSAFE_TRIGGERS = ["hack", "bypass brakes", "overdrive engine safety", "ignore seatbelt alert"]
-AUTOMOTIVE_KEYWORDS = ["car", "vehicle", "engine", "brake", "sensor", "battery", "hvac", "seatbelt", "adas", "cluster", "dashboard", "manual"]
+UNSAFE_TRIGGERS = [
+    "hack",
+    "bypass brakes",
+    "overdrive engine safety",
+    "ignore seatbelt alert",
+]
+AUTOMOTIVE_KEYWORDS = [
+    "car",
+    "vehicle",
+    "engine",
+    "brake",
+    "sensor",
+    "battery",
+    "hvac",
+    "seatbelt",
+    "adas",
+    "cluster",
+    "dashboard",
+    "manual",
+]
 
 
 def check_safety_and_scope(query: str) -> tuple[bool, str]:
     query_lower = query.lower()
     for trigger in UNSAFE_TRIGGERS:
         if trigger in query_lower:
-            logger.warning(f"Unsafe request detected: '{query}' triggering: '{trigger}'")
+            logger.warning(
+                f"Unsafe request detected: '{query}' triggering: '{trigger}'"
+            )
             return False, "Yêu cầu bị từ chối vì lý do an toàn vận hành xe."
 
     is_on_topic = any(keyword in query_lower for keyword in AUTOMOTIVE_KEYWORDS)
     if not is_on_topic:
         logger.warning(f"Out of scope request: '{query}'")
-        return False, "Tôi chỉ hỗ trợ giải đáp các câu hỏi liên quan đến vận hành và hướng dẫn kỹ thuật của xe."
+        return (
+            False,
+            "Tôi chỉ hỗ trợ giải đáp các câu hỏi liên quan đến vận hành và hướng dẫn kỹ thuật của xe.",
+        )
 
     return True, ""
 
@@ -45,7 +68,7 @@ def solve_automotive_query(query: str) -> Dict[str, Any]:
             "query": query,
             "answer": refusal_reason,
             "citations": [],
-            "status": "refused"
+            "status": "refused",
         }
 
     logger.info("Executing vector database query...")
@@ -55,15 +78,15 @@ def solve_automotive_query(query: str) -> Dict[str, Any]:
             "document_name": "2011 - KMS Manual.pdf",
             "section": "Chương 4: Điều hòa & Hệ thống điện",
             "page": 42,
-            "matched_text": "Hệ thống điều hòa (HVAC) được điều khiển qua CarPropertyManager với AreaId là 0."
+            "matched_text": "Hệ thống điều hòa (HVAC) được điều khiển qua CarPropertyManager với AreaId là 0.",
         },
         {
             "document_id": "1ecc7f4e2b438cb0ac5c336fed7cfffbca78b42f87a31a0c0add50aa38cfc751",
             "document_name": "light-control-system.pdf",
             "section": "Chương 7: ADAS & Phanh khẩn cấp",
             "page": 105,
-            "matched_text": "Khi xe chạy quá tốc độ 80km/h, hệ thống ADAS kích hoạt phanh khẩn cấp tự động (AEB) nếu khoảng cách xe trước < 15m."
-        }
+            "matched_text": "Khi xe chạy quá tốc độ 80km/h, hệ thống ADAS kích hoạt phanh khẩn cấp tự động (AEB) nếu khoảng cách xe trước < 15m.",
+        },
     ]
 
     answer = (
@@ -77,17 +100,23 @@ def solve_automotive_query(query: str) -> Dict[str, Any]:
         "query": query,
         "answer": answer,
         "citations": citations,
-        "status": "success"
+        "status": "success",
     }
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="KMS RAG Offline Evaluator CLI")
-    parser.add_argument("--input", required=True, help="Input directory containing queries")
-    parser.add_argument("--output", required=True, help="Output file to write responses to")
+    parser.add_argument(
+        "--input", required=True, help="Input directory containing queries"
+    )
+    parser.add_argument(
+        "--output", required=True, help="Output file to write responses to"
+    )
     args = parser.parse_args()
 
-    logger.info(f"Running offline batch evaluation: input={args.input}, output={args.output}")
+    logger.info(
+        f"Running offline batch evaluation: input={args.input}, output={args.output}"
+    )
 
     # Mock reading inputs
     queries = ["Làm thế nào kích hoạt phanh khẩn cấp ADAS?"]
@@ -128,7 +157,7 @@ def get_chroma_collection():
             _COLLECTION_CACHE.query(query_texts=["warmup"], n_results=1)
         except Exception as e:
             logger.error(f"Failed to initialize ChromaDB collection: {e}")
-            raise e
+            raise
     return _COLLECTION_CACHE
 
 
@@ -146,13 +175,15 @@ def _cached_vector_query(query: str, top_k: int = 3) -> tuple:
 
     formatted_results = []
     for doc, meta in zip(docs, metas):
-        formatted_results.append((
-            meta.get("document_id", ""),
-            meta.get("document_name", "Automotive Manual"),
-            meta.get("section", f"Trang {meta.get('page', 1)}"),
-            int(meta.get("page", 1)),
-            doc[:300]
-        ))
+        formatted_results.append(
+            (
+                meta.get("document_id", ""),
+                meta.get("document_name", "Automotive Manual"),
+                meta.get("section", f"Trang {meta.get('page', 1)}"),
+                int(meta.get("page", 1)),
+                doc[:300],
+            )
+        )
     return tuple(formatted_results)
 
 
@@ -167,7 +198,7 @@ def solve_automotive_query_live(query: str) -> Dict[str, Any]:
             "query": query,
             "answer": refusal_reason,
             "citations": [],
-            "status": "refused"
+            "status": "refused",
         }
 
     try:
@@ -175,32 +206,40 @@ def solve_automotive_query_live(query: str) -> Dict[str, Any]:
         citations = []
         snippets = []
 
-        for idx, (doc_id, doc_name, section, page, text_snippet) in enumerate(raw_citations, start=1):
-            citations.append({
-                "document_id": doc_id,
-                "document_name": doc_name,
-                "section": section,
-                "page": page,
-                "matched_text": text_snippet,
-            })
-            snippets.append(f"{idx}. [{doc_name} - {section} (Trang {page})]: {text_snippet}")
+        for idx, (doc_id, doc_name, section, page, text_snippet) in enumerate(
+            raw_citations, start=1
+        ):
+            citations.append(
+                {
+                    "document_id": doc_id,
+                    "document_name": doc_name,
+                    "section": section,
+                    "page": page,
+                    "matched_text": text_snippet,
+                }
+            )
+            snippets.append(
+                f"{idx}. [{doc_name} - {section} (Trang {page})]: {text_snippet}"
+            )
 
         if snippets:
             answer = (
-                f"Dựa trên tài liệu hướng dẫn kỹ thuật tra cứu được:\n" +
-                "\n".join(snippets[:2])
+                f"Dựa trên tài liệu hướng dẫn kỹ thuật tra cứu được:\n"
+                + "\n".join(snippets[:2])
             )
         else:
             answer = "Không tìm thấy thông tin phù hợp trong tài liệu kỹ thuật của xe."
 
         elapsed_ms = (time.time() - start_time) * 1000
-        logger.info(f"Live RAG response formulated in {elapsed_ms:.2f}ms with {len(citations)} citations.")
+        logger.info(
+            f"Live RAG response formulated in {elapsed_ms:.2f}ms with {len(citations)} citations."
+        )
 
         return {
             "query": query,
             "answer": answer,
             "citations": citations,
-            "status": "success"
+            "status": "success",
         }
 
     except Exception as e:
@@ -209,5 +248,5 @@ def solve_automotive_query_live(query: str) -> Dict[str, Any]:
             "query": query,
             "answer": f"Đã xảy ra lỗi trong quá trình tra cứu dữ liệu: {e!s}",
             "citations": [],
-            "status": "error"
+            "status": "error",
         }

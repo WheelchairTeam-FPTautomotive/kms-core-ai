@@ -5,6 +5,8 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
+
 import chromadb
 from chromadb.utils import embedding_functions
 from pypdf import PdfReader
@@ -30,14 +32,14 @@ def load_document_mapping(corpus_dir: str | Path) -> dict[str, str]:
     try:
         with open(mapping_path, "r", encoding="utf-8") as f:
             raw_map: dict[str, list[str]] = json.load(f)
-            
+
         hash_to_name: dict[str, str] = {}
         for doc_hash, name_list in raw_map.items():
             if name_list:
                 hash_to_name[doc_hash] = name_list[0]
             else:
                 hash_to_name[doc_hash] = doc_hash
-                
+
         logger.info(f"Loaded {len(hash_to_name)} document mappings from mapping.json")
         return hash_to_name
     except Exception as e:
@@ -63,7 +65,10 @@ def extract_section_header(page_text: str, default_page: int) -> str:
     # Check top 3 lines for chapter / section indicators
     for line in lines[:3]:
         lower_line = line.lower()
-        if any(kw in lower_line for kw in ["chương", "chapter", "mục", "section", "srs", "part", "bài"]):
+        if any(
+            kw in lower_line
+            for kw in ["chương", "chapter", "mục", "section", "srs", "part", "bài"]
+        ):
             return line[:100]
 
     # If first line looks like a title (short & capitalized)
@@ -127,7 +132,9 @@ def get_chroma_collection(reset: bool = False) -> chromadb.Collection:
             model_name=settings.embedding_model,
         )
     else:
-        logger.info("Using Local Default ONNX Embedding Function ($0 Cost, ~10ms Latency)...")
+        logger.info(
+            "Using Local Default ONNX Embedding Function ($0 Cost, ~10ms Latency)..."
+        )
         emb_fn = embedding_functions.DefaultEmbeddingFunction()
 
     collection = client.get_or_create_collection(
@@ -188,7 +195,9 @@ def run_ingestion(
 
     for file_idx, (pdf_file, doc_id, doc_name) in enumerate(pdf_files, start=1):
         chunks = process_pdf_file(pdf_file, doc_id, doc_name, chunk_config)
-        logger.info(f"[{file_idx}/{len(pdf_files)}] Processed '{pdf_file.name}' -> {len(chunks)} chunks")
+        logger.info(
+            f"[{file_idx}/{len(pdf_files)}] Processed '{pdf_file.name}' -> {len(chunks)} chunks"
+        )
 
         for chunk in chunks:
             chunk_unique_id = f"{doc_id}_p{chunk.page}_c{chunk.chunk_index}"
@@ -216,7 +225,7 @@ def run_ingestion(
         )
 
     elapsed = time.time() - start_time
-    logger.info(f"=== Ingestion Complete ===")
+    logger.info("=== Ingestion Complete ===")
     logger.info(f"Processed Documents: {len(pdf_files)}")
     logger.info(f"Total Chunks Stored: {total_chunks}")
     logger.info(f"Time Taken: {elapsed:.2f} seconds")
@@ -226,8 +235,14 @@ def run_ingestion(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="KMS Core AI PDF Ingestion Engine")
-    parser.add_argument("--reset", action="store_true", help="Reset ChromaDB collection before ingestion")
-    parser.add_argument("--batch-size", type=int, default=200, help="Batch size for ChromaDB upsert")
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Reset ChromaDB collection before ingestion",
+    )
+    parser.add_argument(
+        "--batch-size", type=int, default=200, help="Batch size for ChromaDB upsert"
+    )
     args = parser.parse_args()
 
     run_ingestion(reset=args.reset, batch_size=args.batch_size)

@@ -1,5 +1,5 @@
-import pytest
 import tiktoken
+
 from pipelines.chunker import ChunkingConfig, chunk_text
 
 
@@ -24,7 +24,17 @@ def test_chunk_text_small_input():
 def test_chunk_text_sliding_window_overlap():
     encoding = tiktoken.get_encoding("cl100k_base")
     # Generate long text of 1000 tokens
-    words = ["automotive", "manual", "system", "engine", "brake", "sensor", "battery", "hvac", "adas"]
+    words = [
+        "automotive",
+        "manual",
+        "system",
+        "engine",
+        "brake",
+        "sensor",
+        "battery",
+        "hvac",
+        "adas",
+    ]
     long_text = " ".join(words * 200)
 
     total_tokens = len(encoding.encode(long_text))

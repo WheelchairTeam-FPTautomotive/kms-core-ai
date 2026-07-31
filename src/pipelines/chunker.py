@@ -1,5 +1,6 @@
-import tiktoken
 from dataclasses import dataclass, field
+
+import tiktoken
 
 _ENCODING_CACHE: dict[str, tiktoken.Encoding] = {}
 
@@ -14,8 +15,8 @@ def _get_encoding(encoding_name: str = "cl100k_base") -> tiktoken.Encoding:
 class ChunkingConfig:
     """Configuration for sliding-window text chunking."""
 
-    window: int = 512   # tokens per chunk
-    overlap: int = 64   # overlapping tokens between adjacent chunks
+    window: int = 512  # tokens per chunk
+    overlap: int = 64  # overlapping tokens between adjacent chunks
     encoding_name: str = "cl100k_base"
 
 
@@ -109,4 +110,3 @@ def chunk_text(
             break
 
     return chunks
-

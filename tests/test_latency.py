@@ -1,5 +1,5 @@
 import time
-import pytest
+
 from pipelines.solve_problem import get_chroma_collection, solve_automotive_query_live
 
 
@@ -33,10 +33,14 @@ def test_solve_automotive_query_latency():
     avg_latency = sum(latencies_ms) / len(latencies_ms)
     max_latency = max(latencies_ms)
 
-    print(f"\n[LATENCY BENCHMARK RESULT]")
+    print("\n[LATENCY BENCHMARK RESULT]")
     print(f"Average Latency: {avg_latency:.2f} ms")
     print(f"Max Latency: {max_latency:.2f} ms")
 
     # Assert response SLA requirement (< 200ms average & max under 250ms allowance for OS test harness jitter)
-    assert avg_latency < 200.0, f"Average latency ({avg_latency:.2f}ms) exceeded 200ms SLA!"
-    assert max_latency < 250.0, f"Max latency ({max_latency:.2f}ms) exceeded 250ms SLA limit!"
+    assert avg_latency < 200.0, (
+        f"Average latency ({avg_latency:.2f}ms) exceeded 200ms SLA!"
+    )
+    assert max_latency < 250.0, (
+        f"Max latency ({max_latency:.2f}ms) exceeded 250ms SLA limit!"
+    )
