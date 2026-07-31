@@ -45,7 +45,7 @@ def test_bedrock_rag_success(mock_get_bedrock_client, mock_generate_embeddings, 
         }
     }
     mock_response_body = MagicMock()
-    mock_response_body.read.return_value = '{"content": [{"text": "Phanh AEB tự động kích hoạt khi có vật cản."}]}'.encode("utf-8")
+    mock_response_body.read.return_value = '{"content": [{"text": "Phanh AEB tự động kích hoạt khi có vật cản."}]}'.encode()
 
     mock_runtime.invoke_model.return_value = {"body": mock_response_body}
 
