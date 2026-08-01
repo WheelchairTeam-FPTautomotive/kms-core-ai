@@ -7,7 +7,7 @@ It is safe to import from test suites and local debugging scripts.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ def check_safety_and_scope(query: str) -> tuple[bool, str]:
     return True, ""
 
 
-def solve_automotive_query(query: str) -> Dict[str, Any]:
+def solve_automotive_query(query: str) -> dict[str, Any]:
     """
     Mock RAG solver that returns deterministic automotive citations.
 
