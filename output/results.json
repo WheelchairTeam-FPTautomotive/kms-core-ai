@@ -1,23 +1,20 @@
 [
   {
-    "query": "Làm thế nào kích hoạt phanh khẩn cấp ADAS?",
-    "answer": "Dựa trên tài liệu hướng dẫn kỹ thuật của xe:\n1. Hệ thống điều hòa (HVAC) hoạt động trên VHAL thông qua CarPropertyManager (AreaId: 0).\n2. Phanh khẩn cấp tự động (AEB) hoạt động kết hợp với ADAS sẽ kích hoạt để bảo vệ an toàn khi xe chạy > 80km/h và khoảng cách va chạm dưới 15m.",
-    "citations": [
-      {
-        "document_id": "949eb66893b5dbf59aa4b4be35ad330c7b8f0c3802f9ccb8d25881128157bf9c",
-        "document_name": "2011 - KMS Manual.pdf",
-        "section": "Chương 4: Điều hòa & Hệ thống điện",
-        "page": 42,
-        "matched_text": "Hệ thống điều hòa (HVAC) được điều khiển qua CarPropertyManager với AreaId là 0."
-      },
-      {
-        "document_id": "1ecc7f4e2b438cb0ac5c336fed7cfffbca78b42f87a31a0c0add50aa38cfc751",
-        "document_name": "light-control-system.pdf",
-        "section": "Chương 7: ADAS & Phanh khẩn cấp",
-        "page": 105,
-        "matched_text": "Khi xe chạy quá tốc độ 80km/h, hệ thống ADAS kích hoạt phanh khẩn cấp tự động (AEB) nếu khoảng cách xe trước < 15m."
-      }
-    ],
+    "query": "Hệ thống điều hòa HVAC được điều khiển như thế nào?",
+    "answer": "Không tìm thấy thông tin phù hợp trong tài liệu kỹ thuật của xe.",
+    "citations": [],
     "status": "success"
+  },
+  {
+    "query": "Làm thế nào kích hoạt phanh khẩn cấp ADAS?",
+    "answer": "Không tìm thấy thông tin phù hợp trong tài liệu kỹ thuật của xe.",
+    "citations": [],
+    "status": "success"
+  },
+  {
+    "query": "Áp suất lốp tiêu chuẩn là bao nhiêu?",
+    "answer": "Tôi chỉ hỗ trợ giải đáp các câu hỏi liên quan đến vận hành và hướng dẫn kỹ thuật của xe.",
+    "citations": [],
+    "status": "refused"
   }
 ]

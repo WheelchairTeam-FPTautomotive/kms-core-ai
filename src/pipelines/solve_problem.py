@@ -59,81 +59,6 @@ def check_safety_and_scope(query: str) -> tuple[bool, str]:
     return True, ""
 
 
-def solve_automotive_query(query: str) -> Dict[str, Any]:
-    logger.info(f"RAG processing query: '{query}'")
-
-    is_valid, refusal_reason = check_safety_and_scope(query)
-    if not is_valid:
-        return {
-            "query": query,
-            "answer": refusal_reason,
-            "citations": [],
-            "status": "refused",
-        }
-
-    logger.info("Executing vector database query...")
-    citations = [
-        {
-            "document_id": "949eb66893b5dbf59aa4b4be35ad330c7b8f0c3802f9ccb8d25881128157bf9c",
-            "document_name": "2011 - KMS Manual.pdf",
-            "section": "Chương 4: Điều hòa & Hệ thống điện",
-            "page": 42,
-            "matched_text": "Hệ thống điều hòa (HVAC) được điều khiển qua CarPropertyManager với AreaId là 0.",
-        },
-        {
-            "document_id": "1ecc7f4e2b438cb0ac5c336fed7cfffbca78b42f87a31a0c0add50aa38cfc751",
-            "document_name": "light-control-system.pdf",
-            "section": "Chương 7: ADAS & Phanh khẩn cấp",
-            "page": 105,
-            "matched_text": "Khi xe chạy quá tốc độ 80km/h, hệ thống ADAS kích hoạt phanh khẩn cấp tự động (AEB) nếu khoảng cách xe trước < 15m.",
-        },
-    ]
-
-    answer = (
-        f"Dựa trên tài liệu hướng dẫn kỹ thuật của xe:\n"
-        f"1. Hệ thống điều hòa (HVAC) hoạt động trên VHAL thông qua CarPropertyManager (AreaId: 0).\n"
-        f"2. Phanh khẩn cấp tự động (AEB) hoạt động kết hợp với ADAS sẽ kích hoạt để bảo vệ an toàn khi xe chạy > 80km/h và khoảng cách va chạm dưới 15m."
-    )
-
-    logger.info("Formulated RAG response with citations.")
-    return {
-        "query": query,
-        "answer": answer,
-        "citations": citations,
-        "status": "success",
-    }
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="KMS RAG Offline Evaluator CLI")
-    parser.add_argument(
-        "--input", required=True, help="Input directory containing queries"
-    )
-    parser.add_argument(
-        "--output", required=True, help="Output file to write responses to"
-    )
-    args = parser.parse_args()
-
-    logger.info(
-        f"Running offline batch evaluation: input={args.input}, output={args.output}"
-    )
-
-    # Mock reading inputs
-    queries = ["Làm thế nào kích hoạt phanh khẩn cấp ADAS?"]
-
-    results = []
-    for q in queries:
-        res = solve_automotive_query(q)
-        results.append(res)
-
-    os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
-    with open(args.output, "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
-
-    logger.info(f"Batch evaluation finished. Results written to: {args.output}")
-
-
-
 # Functions for RAG Vector search pipeline
 _COLLECTION_CACHE = None
 
@@ -262,4 +187,71 @@ def solve_automotive_query_auto(query: str) -> Dict[str, Any]:
         return solve_automotive_query_bedrock(query)
 
     return solve_automotive_query_live(query)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="KMS RAG Offline Evaluator CLI")
+    parser.add_argument(
+        "--input", required=True, help="Input directory containing JSON query files"
+    )
+    parser.add_argument(
+        "--output", required=True, help="Output JSON file to write responses to"
+    )
+    args = parser.parse_args()
+
+    logger.info(
+        f"Running offline batch evaluation: input={args.input}, output={args.output}"
+    )
+
+    input_dir = Path(args.input)
+    if not input_dir.is_dir():
+        logger.error(f"Input path is not a directory: {args.input}")
+        sys.exit(1)
+
+    results: List[Dict[str, Any]] = []
+    total_queries = 0
+    skipped_files = 0
+
+    json_files = sorted(input_dir.glob("*.json"))
+    if not json_files:
+        logger.warning(f"No .json files found in input directory: {args.input}")
+
+    for query_file in json_files:
+        try:
+            with query_file.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            logger.warning(f"Skipping malformed JSON file {query_file}: {e}")
+            skipped_files += 1
+            continue
+        except OSError as e:
+            logger.warning(f"Skipping unreadable file {query_file}: {e}")
+            skipped_files += 1
+            continue
+
+        if not isinstance(data, list):
+            logger.warning(
+                f"Skipping {query_file}: expected JSON list, got {type(data).__name__}"
+            )
+            skipped_files += 1
+            continue
+
+        for item in data:
+            if not isinstance(item, str):
+                logger.warning(f"Skipping non-string query in {query_file}: {item!r}")
+                continue
+
+            total_queries += 1
+            result = solve_automotive_query_live(item)
+            results.append(result)
+
+    os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+    with open(args.output, "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
+
+    logger.info(
+        f"Batch evaluation finished: processed {len(json_files)} file(s), "
+        f"ran {total_queries} query(ies), skipped {skipped_files} file(s). "
+        f"Results written to: {args.output}"
+    )
 
