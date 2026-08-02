@@ -1,6 +1,6 @@
-import sys
-import os
 import json
+import os
+import sys
 
 # Force UTF-8 output
 if sys.stdout.encoding != 'utf-8':
@@ -17,5 +17,5 @@ try:
     res = solve_automotive_query_bedrock("Hệ thống điều hòa HVAC hoạt động như thế nào?")
     print("Bedrock RAG Result:")
     print(json.dumps(res, indent=2, ensure_ascii=False))
-except Exception as e:
+except Exception as e:  # noqa: BLE001
     print(f"Bedrock RAG Failed: {e}")

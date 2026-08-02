@@ -29,7 +29,7 @@ dev = [
 # solve_problem.py is intentionally kept in sync with the reference repo.
 # Legacy typing and Vietnamese strings are preserved by design.
 "src/pipelines/solve_problem.py" = ["I001", "UP035", "UP006", "F401", "F541", "TRY201", "BLE001"]
-"src/pipelines/ingest.py" = ["BLE001", "S110", "F821", "TRY201", "SIM113"]
+"src/pipelines/ingest.py" = ["BLE001", "S110", "F821", "TRY201", "SIM113", "SIM114"]
 "src/pipelines/bedrock_rag.py" = ["BLE001"]
 "src/core/aws_client.py" = ["TRY201", "BLE001"]
 "src/utils/opensearch_utils.py" = ["TRY201", "BLE001"]
@@ -42,4 +42,3 @@ pythonpath = ["src"]
 filterwarnings = [
     "ignore::DeprecationWarning:chromadb.*"
 ]
-
