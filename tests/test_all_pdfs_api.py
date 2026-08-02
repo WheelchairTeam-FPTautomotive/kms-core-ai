@@ -1,9 +1,9 @@
 import os
 import re
 import sys
-import requests
+
 import chromadb
-from pathlib import Path
+import requests
 
 # Force UTF-8 output
 if sys.stdout.encoding != 'utf-8':
@@ -27,7 +27,7 @@ def main():
     client = chromadb.PersistentClient(path=chroma_path)
     try:
         collection = client.get_collection("automotive_manuals")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"[ERROR] Could not load collection 'automotive_manuals': {e}")
         return
 
@@ -107,7 +107,7 @@ def main():
                     "preview": answer[:150].replace('\n', ' ')
                 })
                 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             results.append({
                 "document": doc_name,
                 "query": query_seed,
