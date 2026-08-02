@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from pipelines.solve_problem import solve_automotive_query
+from pipelines.solve_problem import solve_automotive_query_auto
 from utils.logger import setup_logger
 
 logger = setup_logger("kms_core_api")
@@ -43,8 +43,7 @@ async def health_check():
 @app.post("/api/v1/search", response_model=SearchResponse)
 async def search_knowledge_base(payload: SearchRequest):
     try:
-        # Call RAG query solver pipeline
-        result = solve_automotive_query(payload.query)
+        result = solve_automotive_query_auto(payload.query)
         return result
     except Exception as e:  # noqa: BLE001
         logger.error(f"RAG execution failed: {e}")
