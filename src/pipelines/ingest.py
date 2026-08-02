@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -18,6 +19,130 @@ from pipelines.chunker import ChunkingConfig, TextChunk, chunk_text
 from utils.logger import setup_logger
 
 logger = setup_logger("kms_pdf_ingest")
+
+
+# Load english words list
+VOCAB = None
+
+def get_vocab() -> set[str]:
+    global VOCAB
+    if VOCAB is not None:
+        return VOCAB
+        
+    vocab_path = Path(__file__).parent / "google_10000_english.txt"
+    words = set()
+    if vocab_path.exists():
+        try:
+            with open(vocab_path, "r", encoding="utf-8") as f:
+                words = set(f.read().lower().splitlines())
+        except Exception:
+            pass
+            
+    # Add common technical terms/plurals that might not be in the top 10000 general words
+    technical_words = {
+        "programme", "nicaragua", "evidence", "professional", "criteria", "pending", "approval",
+        "requirements", "specification", "specifications", "automotive", "management", "system",
+        "validation", "integration", "implementation", "operational", "uninterpretable", "environmental",
+        "attainments", "attestation", "attestations", "transferred", "contracting", "authority",
+        "directive", "fulfilment", "evidences"
+    }
+    words.update(technical_words)
+    VOCAB = words
+    return VOCAB
+
+
+def join_split_words(text: str) -> str:
+    vocab = get_vocab()
+    valid_2 = {'am', 'an', 'as', 'at', 'be', 'by', 'do', 'go', 'he', 'if', 'in', 'is', 'it', 'me', 'my', 'no', 'of', 'on', 'or', 'so', 'to', 'up', 'us', 'we'}
+    valid_3 = {
+        'act', 'add', 'age', 'ago', 'aim', 'air', 'all', 'and', 'any', 'art', 'ask', 'bad', 'bag', 'bar', 'bat', 'bed', 'bee', 'bet', 'big', 'bit', 'box', 'boy', 'bus', 'but', 'buy', 'bye', 'can', 'cap', 'car', 'cat', 'cop', 'cry', 'cup', 'cut', 'day', 'did', 'die', 'dig', 'dog', 'dry', 'due', 'ear', 'eat', 'egg', 'end', 'era', 'eye', 'fan', 'far', 'fat', 'fee', 'few', 'fit', 'fix', 'fly', 'for', 'fox', 'fun', 'fur', 'gas', 'gem', 'get', 'god', 'gun', 'guy', 'had', 'has', 'hat', 'her', 'him', 'his', 'hit', 'hop', 'hot', 'how', 'hub', 'hug', 'ice', 'ill', 'ink', 'its', 'jam', 'jar', 'job', 'key', 'kid', 'lab', 'lap', 'law', 'lay', 'led', 'let', 'lie', 'lip', 'log', 'lot', 'low', 'mad', 'man', 'map', 'mat', 'may', 'men', 'met', 'mix', 'mud', 'mug', 'net', 'new', 'nod', 'not', 'now', 'nut', 'odd', 'off', 'oil', 'old', 'one', 'opt', 'our', 'out', 'own', 'pad', 'pan', 'pat', 'pay', 'pen', 'pet', 'pin', 'pit', 'pot', 'pub', 'rag', 'ran', 'raw', 'ray', 'red', 'rib', 'rid', 'rig', 'rim', 'rip', 'rob', 'rod', 'row', 'rub', 'rug', 'run', 'rye', 'sad', 'saw', 'say', 'sea', 'see', 'set', 'sew', 'she', 'sin', 'sip', 'sir', 'sit', 'six', 'ski', 'sky', 'sly', 'sob', 'son', 'soy', 'spa', 'sum', 'sun', 'tag', 'tan', 'tap', 'tax', 'tea', 'ten', 'the', 'tie', 'tin', 'tip', 'toe', 'ton', 'too', 'top', 'toy', 'try', 'tub', 'two', 'urn', 'use', 'van', 'vet', 'via', 'vow', 'wad', 'wag', 'war', 'was', 'way', 'web', 'wed', 'wet', 'who', 'why', 'wig', 'win', 'wit', 'won', 'woo', 'yes', 'yet', 'you', 'zoo'
+    }
+    
+    tokens = re.split(r'([a-zA-Z]+)', text)
+    i = 1
+    while i < len(tokens) - 2:
+        w1 = tokens[i]
+        sep = tokens[i+1]
+        w2 = tokens[i+2]
+        
+        if sep == ' ':
+            w1_lower = w1.lower()
+            w2_lower = w2.lower()
+            combined = w1_lower + w2_lower
+            
+            if combined in vocab:
+                w1_is_word = w1_lower in vocab
+                w2_is_word = w2_lower in vocab
+                
+                if len(w1_lower) == 1 and w1_lower not in {'a', 'i'}:
+                    w1_is_word = False
+                elif len(w1_lower) == 2 and w1_lower not in valid_2:
+                    w1_is_word = False
+                elif len(w1_lower) == 3 and w1_lower not in valid_3:
+                    w1_is_word = False
+                    
+                if len(w2_lower) == 1 and w2_lower not in {'a', 'i'}:
+                    w2_is_word = False
+                elif len(w2_lower) == 2 and w2_lower not in valid_2:
+                    w2_is_word = False
+                elif len(w2_lower) == 3 and w2_lower not in valid_3:
+                    w2_is_word = False
+                    
+                if not w1_is_word or not w2_is_word:
+                    if w1[0].isupper():
+                        joined_word = w1[0] + combined[1:]
+                    else:
+                        joined_word = combined
+                    tokens[i] = joined_word
+                    del tokens[i+1:i+3]
+                    continue
+        i += 2
+        
+    return "".join(tokens)
+
+
+def clean_pdf_text(text: str) -> str:
+    if not text:
+        return ""
+    
+    # 1. Normalize line endings
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    
+    # 2. Join words split by spaces
+    text = join_split_words(text)
+    
+    lines = text.split('\n')
+    cleaned_lines = []
+    for line in lines:
+        # Split line into "word groups" by 2 or more spaces
+        word_groups = re.split(r' {2,}', line)
+        cleaned_groups = []
+        for group in word_groups:
+            # Within each group, split by single spaces
+            tokens = group.split(' ')
+            new_tokens = []
+            temp_word = []
+            for t in tokens:
+                # If t is a single alphanumeric char
+                if len(t) == 1 and t.isalnum():
+                    temp_word.append(t)
+                else:
+                    if temp_word:
+                        new_tokens.append("".join(temp_word))
+                        temp_word = []
+                    if t:
+                        new_tokens.append(t)
+            if temp_word:
+                new_tokens.append("".join(temp_word))
+            cleaned_groups.append(" ".join(new_tokens))
+        cleaned_lines.append("  ".join(cleaned_groups))
+        
+    cleaned_text = "\n".join(cleaned_lines)
+    # Normalize multiple spaces
+    cleaned_text = re.sub(r' {2,}', ' ', cleaned_text)
+    # Normalize multiple newlines
+    cleaned_text = re.sub(r'\n+', '\n', cleaned_text)
+    return cleaned_text.strip()
 
 
 def load_document_mapping(corpus_dir: str | Path) -> dict[str, str]:
@@ -91,6 +216,7 @@ def process_pdf_file(
         reader = PdfReader(str(filepath))
         for page_idx, page in enumerate(reader.pages, start=1):
             text = page.extract_text() or ""
+            text = clean_pdf_text(text)
             if not text.strip():
                 continue
 

@@ -1,0 +1,64 @@
+[
+  {
+    "query": "Hệ thống điều hòa HVAC được điều khiển như thế nào?",
+    "answer": "Dựa trên tài liệu hướng dẫn kỹ thuật tra cứu được:\n1. [2009 - gaia.pdf - GOG SRS (Trang 11)]: CU2-DU7\nGOG SRS\nGAIA-C2-SP-UB-YI-002-2\nSPC: concerning speciﬁcation activities,\nDES: concerning design activities,\nIMP: concerning implementation activities,\nINT: concerning integration activities,\nV AL: concerning validation activities,\nACP: concerning acceptance activities,\nMNT: concerning mainten\n2. [2005 - microcare.pdf - Trang 7 (Trang 7)]: Software Requirement Specification for VMUS (Voucher Management Unit System) Page 6 of 33\nThe approach was successfully applied in the sixties/seventies in South Korea and\nTaiwan. In recent years also a progra mme was run in Nicar agua but the OBA has\nnot been implemented in larger scale programs. \n",
+    "citations": [
+      {
+        "document_id": "ce6c4e7562e7fada5e013ead697121e6ebe63f02f6ff5816585f07999b65b8f7",
+        "document_name": "2009 - gaia.pdf",
+        "section": "GOG SRS",
+        "page": 11,
+        "matched_text": "CU2-DU7\nGOG SRS\nGAIA-C2-SP-UB-YI-002-2\nSPC: concerning speciﬁcation activities,\nDES: concerning design activities,\nIMP: concerning implementation activities,\nINT: concerning integration activities,\nV AL: concerning validation activities,\nACP: concerning acceptance activities,\nMNT: concerning mainten"
+      },
+      {
+        "document_id": "116bea5470a773e4b5917e2e27b06a8df8c7e8da9f336752b4423b09c36471f0",
+        "document_name": "2005 - microcare.pdf",
+        "section": "Trang 7",
+        "page": 7,
+        "matched_text": "Software Requirement Specification for VMUS (Voucher Management Unit System) Page 6 of 33\nThe approach was successfully applied in the sixties/seventies in South Korea and\nTaiwan. In recent years also a progra mme was run in Nicar agua but the OBA has\nnot been implemented in larger scale programs. \n"
+      },
+      {
+        "document_id": "1b9ad3e8377052e5690922c3eebbcd1118bd870593a1f8c2fb2692e40d668264",
+        "document_name": "1995 - gemini.pdf",
+        "section": "The phasing of the various parts of the project is given in the [SMP].",
+        "page": 65,
+        "matched_text": "INSTALLA TION ASPECTS\nThe phasing of the various parts of the project is given in the [SMP]."
+      }
+    ],
+    "status": "success"
+  },
+  {
+    "query": "Làm thế nào kích hoạt phanh khẩn cấp ADAS?",
+    "answer": "Dựa trên tài liệu hướng dẫn kỹ thuật tra cứu được:\n1. [1995 - gemini.pdf - The phasing of the various parts of the project is given in the [SMP]. (Trang 65)]: INSTALLA TION ASPECTS\nThe phasing of the various parts of the project is given in the [SMP].\n2. [2003 - tachonet.pdf - Trang 38 (Trang 38)]: TACHOnet - DG TREN GETRONICS BELGIUM \nSoftware Requirements Specification – version 01_00\n21-Feb-03 - Page 38\nUse Case 06 – Get US/Ascii Transliteration, Continued\n \nMessage flow\ndiagram\nThe following diagram outlines the flow of messages exchanged between actors:\nCard Issuing\nAuthority (CIA) TACHOn",
+    "citations": [
+      {
+        "document_id": "1b9ad3e8377052e5690922c3eebbcd1118bd870593a1f8c2fb2692e40d668264",
+        "document_name": "1995 - gemini.pdf",
+        "section": "The phasing of the various parts of the project is given in the [SMP].",
+        "page": 65,
+        "matched_text": "INSTALLA TION ASPECTS\nThe phasing of the various parts of the project is given in the [SMP]."
+      },
+      {
+        "document_id": "da0bbf2f62cf8867ad9e8d5506e050606a80e1b75b478a860279df3c53e96bc0",
+        "document_name": "2003 - tachonet.pdf",
+        "section": "Trang 38",
+        "page": 38,
+        "matched_text": "TACHOnet - DG TREN GETRONICS BELGIUM \nSoftware Requirements Specification – version 01_00\n21-Feb-03 - Page 38\nUse Case 06 – Get US/Ascii Transliteration, Continued\n \nMessage flow\ndiagram\nThe following diagram outlines the flow of messages exchanged between actors:\nCard Issuing\nAuthority (CIA) TACHOn"
+      },
+      {
+        "document_id": "3e0239757cc730f0a010da3f2c2b71713e8198bfbbcaafd9b4f9888f14d1767b",
+        "document_name": "2006 - eirene sys 15.pdf",
+        "section": "4.3.2 The following bearer services, identified in section 2, are to be supported for each type",
+        "page": 49,
+        "matched_text": "OO \n41. PAD access 300 bps T\n41. PAD access 300 bps NT\nO\nO\nO\nO\nO\nO\n42. PAD access 1.2 kbps T\n42. PAD access 1.2 kbps NT\nO\nO\nO\nO\nO\nO\n43. PAD access 1200/75 bps T\n43. PAD access 1200/75 bps NT\nO\nO\nO\nO\nO\nO\n44. PAD access 2.4 kbps T\n44. PAD access 2.4 kbps NT\nO\nO\nO\nO\nO\nO\n45. PAD access 4.8 kbps T\n45. PA"
+      }
+    ],
+    "status": "success"
+  },
+  {
+    "query": "Áp suất lốp tiêu chuẩn là bao nhiêu?",
+    "answer": "Tôi chỉ hỗ trợ giải đáp các câu hỏi liên quan đến vận hành và hướng dẫn kỹ thuật của xe.",
+    "citations": [],
+    "status": "refused"
+  }
+]

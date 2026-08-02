@@ -15,7 +15,7 @@ payload = {
 
 print(f"Sending POST request to {url}...")
 try:
-    response = requests.post(url, json=payload, timeout=10)
+    response = requests.post(url, json=payload, timeout=45)
     print(f"Status Code: {response.status_code}")
     print("\nResponse JSON:")
     print(json.dumps(response.json(), indent=4, ensure_ascii=False))

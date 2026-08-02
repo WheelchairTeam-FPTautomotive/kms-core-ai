@@ -24,7 +24,7 @@ UNSAFE_TRIGGERS = [
     "ignore seatbelt alert",
 ]
 AUTOMOTIVE_KEYWORDS = [
-    # English keywords
+    # English 
     "car",
     "vehicle",
     "engine",
@@ -37,7 +37,7 @@ AUTOMOTIVE_KEYWORDS = [
     "cluster",
     "dashboard",
     "manual",
-    # Vietnamese keywords
+    # Vietnamese 
     "xe",
     "ô tô",
     "oto",
@@ -121,56 +121,6 @@ def solve_automotive_query(query: str) -> Dict[str, Any]:
         "citations": citations,
         "status": "success",
     }
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="KMS RAG Offline Evaluator CLI")
-    parser.add_argument(
-        "--input", required=True, help="Input directory containing queries"
-    )
-    parser.add_argument(
-        "--output", required=True, help="Output file to write responses to"
-    )
-    args = parser.parse_args()
-
-    logger.info(
-        f"Running offline batch evaluation: input={args.input}, output={args.output}"
-    )
-
-    # Read queries from all JSON files in the input directory
-    queries = []
-    input_path = Path(args.input)
-    if input_path.is_dir():
-        for file_path in sorted(input_path.glob("*.json")):
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    file_queries = json.load(f)
-                    if isinstance(file_queries, list):
-                        queries.extend(file_queries)
-                    elif isinstance(file_queries, str):
-                        queries.append(file_queries)
-            except Exception as e:
-                logger.error(f"Failed to read queries from {file_path}: {e}")
-    else:
-        logger.error(f"Input path {args.input} is not a directory.")
-
-    # Fallback to default if no queries found
-    if not queries:
-        logger.warning("No queries found in input directory. Using default query.")
-        queries = ["Làm thế nào kích hoạt phanh khẩn cấp ADAS?"]
-
-    results = []
-    for q in queries:
-        res = solve_automotive_query_auto(q)
-        results.append(res)
-
-    os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
-    with open(args.output, "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
-
-    logger.info(f"Batch evaluation finished. Results written to: {args.output}")
-
-
 
 # Functions for RAG Vector search pipeline
 _COLLECTION_CACHE = None
@@ -301,6 +251,33 @@ def solve_automotive_query_auto(query: str) -> Dict[str, Any]:
 
     return solve_automotive_query_live(query)
 
+# if __name__ == "__main__":
+#     parser = argparse.ArgumentParser(description="KMS RAG Offline Evaluator CLI")
+#     parser.add_argument(
+#         "--input", required=True, help="Input directory containing queries"
+#     )
+#     parser.add_argument(
+#         "--output", required=True, help="Output file to write responses to"
+#     )
+#     args = parser.parse_args()
+
+#     logger.info(
+#         f"Running offline batch evaluation: input={args.input}, output={args.output}"
+#     )
+
+#     # Mock reading inputs
+#     queries = ["Làm thế nào kích hoạt phanh khẩn cấp ADAS?"]
+
+#     results = []
+#     for q in queries:
+#         res = solve_automotive_query(q)
+#         results.append(res)
+
+#     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
+#     with open(args.output, "w", encoding="utf-8") as f:
+#         json.dump(results, f, ensure_ascii=False, indent=2)
+
+#     logger.info(f"Batch evaluation finished. Results written to: {args.output}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="KMS RAG Offline Evaluator CLI")
@@ -355,7 +332,7 @@ if __name__ == "__main__":
                 continue
 
             total_queries += 1
-            result = solve_automotive_query_live(item)
+            result = solve_automotive_query_auto(item)
             results.append(result)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
