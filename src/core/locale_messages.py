@@ -1,0 +1,119 @@
+"""UI-locale helpers: answer language follows AppLanguage, not query language."""
+
+from __future__ import annotations
+
+from typing import Literal
+
+Lang = Literal["vi", "en"]
+
+RAG_SYSTEM_VI = (
+    "Bạn là trợ lý giọng nói trên xe hơi cho tài xế. "
+    "BẮT BUỘC trả lời CHỈ BẰNG TIẾNG VIỆT (kể cả khi câu hỏi bằng tiếng Anh). "
+    "Trả lời ngắn gọn (2–4 câu), rõ ràng, dễ đọc bằng TTS, "
+    "DỰA HOÀN TOÀN VÀO ngữ cảnh tài liệu được cung cấp. "
+    "Có thể nêu tên tài liệu nguồn một lần (ví dụ: 'Theo tài liệu X…'). "
+    "Không trích dẫn đường dẫn file, mã spec, hay danh mục thư mục. "
+    "Không bịa thông số. Nếu ngữ cảnh không đủ, nói rõ không tìm thấy trong tài liệu kỹ thuật."
+)
+
+RAG_SYSTEM_EN = (
+    "You are an in-car voice assistant for the driver. "
+    "You MUST answer ONLY IN ENGLISH (even if the question is in Vietnamese). "
+    "Keep answers short (2–4 sentences), clear, TTS-friendly, "
+    "and STRICTLY grounded in the provided document context. "
+    "You may mention the source document name once (e.g. 'According to document X…'). "
+    "Do not cite file paths, spec codes, or folder names. "
+    "Do not invent specifications. If context is insufficient, say no matching information "
+    "was found in the technical documents."
+)
+
+FREE_TALK_SYSTEM_VI = (
+    "Bạn là trợ lý giọng nói thân thiện trên xe. "
+    "BẮT BUỘC trả lời CHỈ BẰNG TIẾNG VIỆT. "
+    "Trả lời ngắn gọn, lịch sự, dễ đọc bằng TTS cho chào hỏi và trò chuyện chung. "
+    "KHÔNG bịa quy trình vận hành xe, thông số kỹ thuật, hay hướng dẫn từ manual. "
+    "KHÔNG bịa số liệu thời tiết hay tin tức — nếu được hỏi thời tiết, nói bạn không có "
+    "dữ liệu thời tiết trực tiếp và gợi ý hỏi câu tra cứu tài liệu xe. "
+    "Nếu người dùng hỏi điều khiển/bảo dưỡng/an toàn xe, nhắc họ hỏi kiểu tra cứu manual."
+)
+
+FREE_TALK_SYSTEM_EN = (
+    "You are a friendly in-car voice assistant. "
+    "You MUST answer ONLY IN ENGLISH. "
+    "Keep replies short, polite, and TTS-friendly for greetings and small talk. "
+    "Do NOT invent vehicle operating procedures, specs, or manual steps. "
+    "Do NOT invent weather numbers or news — if asked about weather, say you have no "
+    "live weather data and suggest a vehicle-manual style question instead. "
+    "If the user asks about controls/maintenance/safety, ask them to rephrase as a manual lookup."
+)
+
+NOT_FOUND_VI = (
+    "Không tìm thấy thông tin phù hợp trong tài liệu kỹ thuật của xe. "
+    "Bạn có thể hỏi cách khác hoặc chủ đề có trong manual."
+)
+NOT_FOUND_EN = (
+    "No matching information was found in the vehicle technical documents. "
+    "Try rephrasing or ask about a topic covered in the manual."
+)
+
+REFUSED_VI = "Yêu cầu bị từ chối vì lý do an toàn vận hành xe."
+REFUSED_EN = "Request refused for vehicle operational safety reasons."
+
+FREE_TALK_NO_LLM_VI = (
+    "Xin chào! Hiện tôi chỉ hỗ trợ tốt nhất các câu hỏi tra cứu tài liệu kỹ thuật của xe. "
+    "Bạn hãy hỏi theo kiểu hướng dẫn manual nhé."
+)
+FREE_TALK_NO_LLM_EN = (
+    "Hello! I work best with vehicle technical-document questions. "
+    "Please ask in a manual-lookup style."
+)
+
+TIMEOUT_SOFT_VI = (
+    "Xin lỗi, trợ lý đang khởi động chậm. Vui lòng hỏi lại sau vài giây."
+)
+TIMEOUT_SOFT_EN = (
+    "Sorry, the assistant is still warming up. Please ask again in a few seconds."
+)
+
+CAR_STUB_VI = (
+    "Yêu cầu điều khiển xe đã được ghi nhận, nhưng chức năng điều khiển phần cứng "
+    "chưa khả dụng trong bản build này."
+)
+CAR_STUB_EN = (
+    "Vehicle control request noted, but hardware control is not available in this build."
+)
+
+
+def normalize_language(language: str | None) -> Lang:
+    raw = (language or "vi").strip().lower()
+    if raw in {"en", "en-us", "english"}:
+        return "en"
+    return "vi"
+
+
+def rag_system_prompt(language: str | None) -> str:
+    return RAG_SYSTEM_EN if normalize_language(language) == "en" else RAG_SYSTEM_VI
+
+
+def free_talk_system_prompt(language: str | None) -> str:
+    return FREE_TALK_SYSTEM_EN if normalize_language(language) == "en" else FREE_TALK_SYSTEM_VI
+
+
+def not_found_answer(language: str | None) -> str:
+    return NOT_FOUND_EN if normalize_language(language) == "en" else NOT_FOUND_VI
+
+
+def refused_answer(language: str | None) -> str:
+    return REFUSED_EN if normalize_language(language) == "en" else REFUSED_VI
+
+
+def free_talk_no_llm(language: str | None) -> str:
+    return FREE_TALK_NO_LLM_EN if normalize_language(language) == "en" else FREE_TALK_NO_LLM_VI
+
+
+def timeout_soft_answer(language: str | None) -> str:
+    return TIMEOUT_SOFT_EN if normalize_language(language) == "en" else TIMEOUT_SOFT_VI
+
+
+def car_stub_answer(language: str | None) -> str:
+    return CAR_STUB_EN if normalize_language(language) == "en" else CAR_STUB_VI

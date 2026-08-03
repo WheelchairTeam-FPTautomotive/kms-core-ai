@@ -14,68 +14,41 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from core.config import settings
 from utils.logger import setup_logger
+from utils.query_expand import expand_retrieval_queries
 
 logger = setup_logger("core_rag_pipeline")
 
 UNSAFE_TRIGGERS = [
     "hack",
+    "bypass brake",
     "bypass brakes",
+    "overdrive engine",
     "overdrive engine safety",
+    "ignore seatbelt",
     "ignore seatbelt alert",
-]
-AUTOMOTIVE_KEYWORDS = [
-    # English 
-    "car",
-    "vehicle",
-    "engine",
-    "brake",
-    "sensor",
-    "battery",
-    "hvac",
-    "seatbelt",
-    "adas",
-    "cluster",
-    "dashboard",
-    "manual",
-    # Vietnamese 
-    "xe",
-    "ô tô",
-    "oto",
-    "buồng lái",
-    "động cơ",
-    "máy",
-    "phanh",
-    "thắng",
-    "cảm biến",
-    "ắc quy",
-    "pin",
-    "điều hòa",
-    "lạnh",
-    "sưởi",
-    "dây an toàn",
-    "tài liệu",
-    "hướng dẫn",
+    "disable aeb",
+    "disable abs",
+    "jailbreak",
+    "ignore previous instruction",
+    "ignore previous instructions",
 ]
 
 
-def check_safety_and_scope(query: str) -> tuple[bool, str]:
-    query_lower = query.lower()
+def check_safety_and_scope(query: str, language: str | None = "vi") -> tuple[bool, str]:
+    # --- START MODIFICATION ---
+    # Unsafe blocklist only; automotive allowlist removed (RAG gate owns relevance)
+    from core.locale_messages import refused_answer
+    from utils.query_expand import fold_vi
+
+    folded = fold_vi(query)
     for trigger in UNSAFE_TRIGGERS:
-        if trigger in query_lower:
+        if fold_vi(trigger) in folded:
             logger.warning(
                 f"Unsafe request detected: '{query}' triggering: '{trigger}'"
             )
-            return False, "Yêu cầu bị từ chối vì lý do an toàn vận hành xe."
-
-    is_on_topic = any(keyword in query_lower for keyword in AUTOMOTIVE_KEYWORDS)
-    if not is_on_topic:
-        logger.warning(f"Out of scope request: '{query}'")
-        return (
-            False,
-            "Tôi chỉ hỗ trợ giải đáp các câu hỏi liên quan đến vận hành và hướng dẫn kỹ thuật của xe.",
-        )
-
+            return False, refused_answer(language)
     return True, ""
+    # --- END MODIFICATION ---
 
 
 def solve_automotive_query(query: str) -> Dict[str, Any]:
@@ -138,10 +111,27 @@ def get_chroma_collection():
             else:
                 emb_fn = embedding_functions.DefaultEmbeddingFunction()
 
-            _COLLECTION_CACHE = client.get_or_create_collection(
-                name=settings.chroma_collection,
-                embedding_function=emb_fn,
-            )
+            try:
+                _COLLECTION_CACHE = client.get_or_create_collection(
+                    name=settings.chroma_collection,
+                    embedding_function=emb_fn,
+                    # MODIFIED: make L2 space explicit for distance-gate calibration
+                    metadata={
+                        "description": "Automotive manual vector index for KMS Core RAG",
+                        "hnsw:space": "l2",
+                    },
+                )
+            except Exception as meta_err:
+                logger.warning(
+                    f"Chroma create with hnsw:space=l2 failed ({meta_err}); "
+                    "opening existing collection as-is"
+                )
+                _COLLECTION_CACHE = client.get_or_create_collection(
+                    name=settings.chroma_collection,
+                    embedding_function=emb_fn,
+                )
+            space = (_COLLECTION_CACHE.metadata or {}).get("hnsw:space", "l2-default")
+            logger.info(f"Chroma collection ready (hnsw:space={space})")
             _COLLECTION_CACHE.query(query_texts=["warmup"], n_results=1)
         except Exception as e:
             logger.error(f"Failed to initialize ChromaDB collection: {e}")
@@ -160,9 +150,10 @@ def _cached_vector_query(query: str, top_k: int = 3) -> tuple:
 
     docs = results.get("documents", [[]])[0]
     metas = results.get("metadatas", [[]])[0]
+    distances = results.get("distances", [[]])[0]
 
     formatted_results = []
-    for doc, meta in zip(docs, metas):
+    for doc, meta, distance in zip(docs, metas, distances):
         formatted_results.append(
             (
                 meta.get("document_id", ""),
@@ -170,17 +161,47 @@ def _cached_vector_query(query: str, top_k: int = 3) -> tuple:
                 meta.get("section", f"Trang {meta.get('page', 1)}"),
                 int(meta.get("page", 1)),
                 doc[:300],
+                float(distance),
             )
         )
     return tuple(formatted_results)
 
 
-def solve_automotive_query_live(query: str) -> Dict[str, Any]:
-    """Live ChromaDB vector retrieval solver with sub-200ms performance."""
-    start_time = time.time()
-    logger.info(f"Live RAG processing query: '{query}'")
+NOT_FOUND_ANSWER = (
+    "Không tìm thấy thông tin phù hợp trong tài liệu kỹ thuật của xe. "
+    "Bạn có thể hỏi cách khác hoặc chủ đề có trong manual."
+)
 
-    is_valid, refusal_reason = check_safety_and_scope(query)
+
+def _merge_multi_query_hits(queries: list[str], top_k: int) -> list[tuple]:
+    """
+    Run cached Chroma lookups for each retrieval variant; keep best distance per chunk.
+    --- START MODIFICATION ---
+    """
+    best_by_key: dict[tuple, tuple] = {}
+    for q in queries:
+        for hit in _cached_vector_query(q, top_k=top_k):
+            # MODIFIED: unused fields prefixed for Ruff RUF059
+            doc_id, _doc_name, _section, page, text_snippet, distance = hit
+            key = (doc_id, page, text_snippet[:80])
+            prev = best_by_key.get(key)
+            if prev is None or distance < prev[5]:
+                best_by_key[key] = hit
+    merged = sorted(best_by_key.values(), key=lambda h: h[5])
+    return merged[:top_k]
+    # --- END MODIFICATION ---
+
+
+def solve_automotive_query_live(
+    query: str, language: str | None = "vi"
+) -> Dict[str, Any]:
+    """Live ChromaDB vector retrieval solver with distance relevance gate."""
+    from core.locale_messages import not_found_answer
+
+    start_time = time.time()
+    logger.info(f"Live RAG processing query: '{query}' language={language}")
+
+    is_valid, refusal_reason = check_safety_and_scope(query, language=language)
     if not is_valid:
         return {
             "query": query,
@@ -190,13 +211,28 @@ def solve_automotive_query_live(query: str) -> Dict[str, Any]:
         }
 
     try:
-        raw_citations = _cached_vector_query(query, top_k=3)
+        top_k = getattr(settings, "rag_top_k", 3) or 3
+        max_distance = float(getattr(settings, "rag_max_distance", 1.15))
+        # --- START MODIFICATION ---
+        # Tone-free VI / cross-lingual: expand for retrieval only; answer uses original query
+        retrieval_queries = expand_retrieval_queries(query)
+        logger.info(f"RAG retrieval_queries={retrieval_queries}")
+        raw_citations = _merge_multi_query_hits(retrieval_queries, top_k=top_k)
+        # --- END MODIFICATION ---
         citations = []
         snippets = []
+        best_distance = None
 
-        for idx, (doc_id, doc_name, section, page, text_snippet) in enumerate(
+        for idx, (doc_id, doc_name, section, page, text_snippet, distance) in enumerate(
             raw_citations, start=1
         ):
+            if best_distance is None or distance < best_distance:
+                best_distance = distance
+            # --- START MODIFICATION ---
+            # Relevance gate: drop weak neighbors above RAG_MAX_DISTANCE
+            if distance > max_distance:
+                continue
+            # --- END MODIFICATION ---
             citations.append(
                 {
                     "document_id": doc_id,
@@ -210,13 +246,25 @@ def solve_automotive_query_live(query: str) -> Dict[str, Any]:
                 f"{idx}. [{doc_name} - {section} (Trang {page})]: {text_snippet}"
             )
 
-        if snippets:
-            answer = (
-                f"Dựa trên tài liệu hướng dẫn kỹ thuật tra cứu được:\n"
-                + "\n".join(snippets[:2])
-            )
-        else:
-            answer = "Không tìm thấy thông tin phù hợp trong tài liệu kỹ thuật của xe."
+        space = (get_chroma_collection().metadata or {}).get("hnsw:space", "l2")
+        logger.info(
+            f"RAG gate space={space} best_distance={best_distance} "
+            f"max={max_distance} kept={len(snippets)}/{len(raw_citations)}"
+        )
+
+        if not snippets:
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.info(f"Live RAG not_found in {elapsed_ms:.2f}ms (weak/no hits)")
+            return {
+                "query": query,
+                "answer": not_found_answer(language),
+                "citations": [],
+                "status": "not_found",
+            }
+
+        from core.answer_generator import generate_driver_answer
+
+        answer = generate_driver_answer(query, snippets, language=language)
 
         elapsed_ms = (time.time() - start_time) * 1000
         logger.info(
@@ -240,16 +288,35 @@ def solve_automotive_query_live(query: str) -> Dict[str, Any]:
         }
 
 
-def solve_automotive_query_auto(query: str) -> Dict[str, Any]:
+def solve_free_talk_query(query: str, language: str | None = "vi") -> Dict[str, Any]:
+    """Free-talk path: no RAG retrieval; LLM or polite redirect."""
+    from core.answer_generator import generate_free_talk_answer
+
+    answer = generate_free_talk_answer(query, language=language)
+    return {
+        "query": query,
+        "answer": answer,
+        "citations": [],
+        "status": "success",
+    }
+
+
+def solve_automotive_query_auto(
+    query: str, mode: str = "rag", language: str | None = "vi"
+) -> Dict[str, Any]:
     """
-    Automatic router function dispatching queries to AWS Bedrock/OpenSearch or ChromaDB
-    based on settings.vector_db_type configuration.
+    Dispatch by mode and vector_db_type.
+    Answer language follows UI `language` only.
     """
+    resolved = (mode or "rag").strip().lower()
+    if resolved == "free_talk":
+        return solve_free_talk_query(query, language=language)
+
     if getattr(settings, "vector_db_type", "chroma") == "opensearch":
         from pipelines.bedrock_rag import solve_automotive_query_bedrock
         return solve_automotive_query_bedrock(query)
 
-    return solve_automotive_query_live(query)
+    return solve_automotive_query_live(query, language=language)
 
 # if __name__ == "__main__":
 #     parser = argparse.ArgumentParser(description="KMS RAG Offline Evaluator CLI")
