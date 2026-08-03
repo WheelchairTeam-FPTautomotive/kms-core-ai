@@ -32,6 +32,7 @@ dev = [
 "src/pipelines/ingest.py" = ["BLE001", "S110", "F821", "TRY201", "SIM113", "SIM114"]
 "src/pipelines/bedrock_rag.py" = ["BLE001"]
 "src/core/aws_client.py" = ["TRY201", "BLE001"]
+"src/core/answer_generator.py" = ["BLE001", "TRY201"]
 "src/utils/opensearch_utils.py" = ["TRY201", "BLE001"]
 "src/pipelines/chunker.py" = ["SIM113"]
 

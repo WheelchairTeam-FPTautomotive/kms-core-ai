@@ -10,11 +10,16 @@ def test_bedrock_rag_unsafe_refusal():
     assert result["citations"] == []
 
 
+# --- START MODIFICATION ---
+# Generation moved to core.answer_generator; mock the shared entrypoint.
+@patch("pipelines.bedrock_rag.generate_driver_answer")
 @patch("pipelines.bedrock_rag.get_opensearch_client")
 @patch("pipelines.bedrock_rag.generate_bedrock_embeddings")
-@patch("pipelines.bedrock_rag.get_bedrock_runtime_client")
-def test_bedrock_rag_success(mock_get_bedrock_client, mock_generate_embeddings, mock_get_opensearch):
+def test_bedrock_rag_success(
+    mock_generate_embeddings, mock_get_opensearch, mock_generate_answer
+):
     mock_generate_embeddings.return_value = [[0.1, 0.2, 0.3]]
+    mock_generate_answer.return_value = "Phanh AEB tự động kích hoạt khi có vật cản."
 
     mock_opensearch = MagicMock()
     mock_get_opensearch.return_value = mock_opensearch
@@ -35,25 +40,14 @@ def test_bedrock_rag_success(mock_get_bedrock_client, mock_generate_embeddings, 
         }
     }
 
-    mock_runtime = MagicMock()
-    mock_get_bedrock_client.return_value = mock_runtime
-    mock_runtime.converse.return_value = {
-        "output": {
-            "message": {
-                "content": [{"text": "Phanh AEB tự động kích hoạt khi có vật cản."}]
-            }
-        }
-    }
-    mock_response_body = MagicMock()
-    mock_response_body.read.return_value = '{"content": [{"text": "Phanh AEB tự động kích hoạt khi có vật cản."}]}'.encode()
-
-    mock_runtime.invoke_model.return_value = {"body": mock_response_body}
-
-
-    result = solve_automotive_query_bedrock("Làm thế nào kích hoạt phanh khẩn cấp ADAS?")
+    result = solve_automotive_query_bedrock(
+        "Làm thế nào kích hoạt phanh khẩn cấp ADAS?"
+    )
 
     assert result["status"] == "success"
     assert "Phanh AEB" in result["answer"]
     assert len(result["citations"]) == 1
     assert result["citations"][0]["document_id"] == "doc_adas_01"
     assert result["citations"][0]["page"] == 45
+    mock_generate_answer.assert_called_once()
+# --- END MODIFICATION ---

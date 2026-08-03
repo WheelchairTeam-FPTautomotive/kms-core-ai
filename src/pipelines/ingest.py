@@ -266,7 +266,10 @@ def get_chroma_collection(reset: bool = False) -> chromadb.Collection:
     collection = client.get_or_create_collection(
         name=settings.chroma_collection,
         embedding_function=emb_fn,
-        metadata={"description": "Automotive manual vector index for KMS Core RAG"},
+        metadata={
+            "description": "Automotive manual vector index for KMS Core RAG",
+            "hnsw:space": "l2",
+        },
     )
     return collection
 
@@ -289,26 +292,36 @@ def run_ingestion(
 
     pdf_files: list[tuple[Path, str, str]] = []
 
-    # 1. Gather files from docs_corpus
+    # 1. Gather files from docs_corpus (recursive — HACKATHON uses category subfolders)
     corpus_path = Path(corpus_dir)
     if corpus_path.exists():
-        for pdf_file in corpus_path.glob("*.pdf"):
+        # --- START MODIFICATION ---
+        for pdf_file in corpus_path.rglob("*.pdf"):
             doc_id = pdf_file.stem
-            doc_name = hash_to_name.get(doc_id, doc_id)
+            mapped = hash_to_name.get(doc_id)
+            # Prefer mapping title; else basename only (never nested path)
+            doc_name = mapped if mapped else pdf_file.name
             if not doc_name.endswith(".pdf"):
                 doc_name = f"{doc_name}.pdf"
             pdf_files.append((pdf_file, doc_id, doc_name))
+        # --- END MODIFICATION ---
 
-    # 2. Gather additional files from docs_pdf
+    # 2. Gather additional files from docs_pdf (recursive)
     pdf_path = Path(pdf_dir)
     processed_hashes = {doc_id for _, doc_id, _ in pdf_files}
     if pdf_path.exists():
-        for pdf_file in pdf_path.glob("*.pdf"):
-            doc_name = pdf_file.name
+        # --- START MODIFICATION ---
+        for pdf_file in pdf_path.rglob("*.pdf"):
+            doc_name = pdf_file.name  # basename only
             doc_id = calculate_file_hash(pdf_file)
             if doc_id not in processed_hashes:
+                # Prefer mapping by hash when available
+                mapped = hash_to_name.get(doc_id)
+                if mapped:
+                    doc_name = mapped if mapped.endswith(".pdf") else f"{mapped}.pdf"
                 pdf_files.append((pdf_file, doc_id, doc_name))
                 processed_hashes.add(doc_id)
+        # --- END MODIFICATION ---
 
     logger.info(f"Found {len(pdf_files)} target PDF documents to process.")
 
@@ -381,9 +394,10 @@ def run_ingestion_opensearch(
 
     corpus_path = Path(corpus_dir)
     if corpus_path.exists():
-        for pdf_file in corpus_path.glob("*.pdf"):
+        for pdf_file in corpus_path.rglob("*.pdf"):
             doc_id = pdf_file.stem
-            doc_name = hash_to_name.get(doc_id, doc_id)
+            mapped = hash_to_name.get(doc_id)
+            doc_name = mapped if mapped else pdf_file.name
             if not doc_name.endswith(".pdf"):
                 doc_name = f"{doc_name}.pdf"
             pdf_files.append((pdf_file, doc_id, doc_name))
@@ -391,10 +405,13 @@ def run_ingestion_opensearch(
     pdf_path = Path(pdf_dir)
     processed_hashes = {doc_id for _, doc_id, _ in pdf_files}
     if pdf_path.exists():
-        for pdf_file in pdf_path.glob("*.pdf"):
+        for pdf_file in pdf_path.rglob("*.pdf"):
             doc_name = pdf_file.name
             doc_id = calculate_file_hash(pdf_file)
             if doc_id not in processed_hashes:
+                mapped = hash_to_name.get(doc_id)
+                if mapped:
+                    doc_name = mapped if mapped.endswith(".pdf") else f"{mapped}.pdf"
                 pdf_files.append((pdf_file, doc_id, doc_name))
                 processed_hashes.add(doc_id)
 

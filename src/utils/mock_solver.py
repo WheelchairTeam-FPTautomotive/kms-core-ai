@@ -13,49 +13,44 @@ logger = logging.getLogger(__name__)
 
 UNSAFE_TRIGGERS = [
     "hack",
+    "bypass brake",
     "bypass brakes",
+    "overdrive engine",
     "overdrive engine safety",
+    "ignore seatbelt",
     "ignore seatbelt alert",
+    "disable aeb",
+    "disable abs",
+    "jailbreak",
+    "ignore previous instruction",
+    "ignore previous instructions",
 ]
 
-AUTOMOTIVE_KEYWORDS = [
-    "car",
-    "vehicle",
-    "engine",
-    "brake",
-    "sensor",
-    "battery",
-    "hvac",
-    "seatbelt",
-    "adas",
-    "cluster",
-    "dashboard",
-    "manual",
-]
+
+def _fold_vi_local(text: str) -> str:
+    import unicodedata
+
+    lowered = text.lower().strip().replace("đ", "d").replace("Đ", "d")
+    nfd = unicodedata.normalize("NFD", lowered)
+    return "".join(c for c in nfd if unicodedata.category(c) != "Mn")
 
 
 def check_safety_and_scope(query: str) -> tuple[bool, str]:
     """
-    Lightweight safety and scope guard duplicated here so the mock solver
+    Lightweight safety guard duplicated here so the mock solver
     remains self-contained and does not import the live pipeline.
     """
-    query_lower = query.lower()
+    # --- START MODIFICATION ---
+    # Unsafe blocklist only; automotive allowlist removed
+    folded = _fold_vi_local(query)
     for trigger in UNSAFE_TRIGGERS:
-        if trigger in query_lower:
+        if _fold_vi_local(trigger) in folded:
             logger.warning(
                 "Unsafe request detected: '%s' triggering: '%s'", query, trigger
             )
             return False, "Yêu cầu bị từ chối vì lý do an toàn vận hành xe."
-
-    is_on_topic = any(keyword in query_lower for keyword in AUTOMOTIVE_KEYWORDS)
-    if not is_on_topic:
-        logger.warning("Out of scope request: '%s'", query)
-        return (
-            False,
-            "Tôi chỉ hỗ trợ giải đáp các câu hỏi liên quan đến vận hành và hướng dẫn kỹ thuật của xe.",
-        )
-
     return True, ""
+    # --- END MODIFICATION ---
 
 
 def solve_automotive_query(query: str) -> dict[str, Any]:
