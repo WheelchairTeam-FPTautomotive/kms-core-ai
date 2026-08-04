@@ -29,7 +29,7 @@ echo "=========================================================="
 
 export PYTHONPATH="src:${PYTHONPATH}"
 
-# Execute Python pipeline CLI
-python -m pipelines.solve_problem --input "$INPUT_DIR" --output "$OUTPUT_FILE"
+# Execute Python pipeline CLI inside the uv-managed environment
+uv run python -m pipelines.solve_problem --input "$INPUT_DIR" --output "$OUTPUT_FILE"
 
 echo "Core AI Offline Evaluation completed successfully."

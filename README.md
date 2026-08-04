@@ -266,7 +266,7 @@ Then run the same one-liner.
 #### Expected output
 
 ```text
-INFO: Found 84 target PDF documents to process.
+INFO: Found <N> target PDF documents to process.
 INFO: === Ingestion Complete ===
 INFO: Processed Documents: 84
 INFO: Total Chunks Stored: <chunk_count>
@@ -329,11 +329,71 @@ uv run python tests/test_latency.py
 
 ### 4. Offline Evaluator CLI (`scripts/run.sh`)
 
-Execute batch processing for the hackathon evaluator contract:
+Run the hackathon evaluator contract against the local ChromaDB index:
 
 ```bash
 bash ./scripts/run.sh --input data/test_queries --output output/results.json
 ```
+
+#### Input format
+
+Each `.json` file in the input directory must contain a list of query strings:
+
+```json
+[
+  "Hệ thống điều hòa HVAC được điều khiển như thế nào?",
+  "Làm thế nào kích hoạt phanh khẩn cấp ADAS?"
+]
+```
+
+Malformed or non-list JSON files are skipped with a warning.
+
+#### Output format
+
+`output/results.json` is a JSON array of result objects:
+
+```json
+[
+  {
+    "query": "Hệ thống điều hòa HVAC được điều khiển như thế nào?",
+    "answer": "Dựa trên tài liệu...",
+    "citations": [
+      {
+        "document_id": "8089fc3a5cbf88223a9c6417362ac97eebce17bb8ae8915e4b99d65dbb67ce3e",
+        "document_name": "1995 - Landsat7.pdf",
+        "section": "Trang 1",
+        "page": 1,
+        "matched_text": "..."
+      }
+    ],
+    "status": "success"
+  }
+]
+```
+
+Possible `status` values:
+
+| Status | Meaning |
+|---|---|
+| `success` | Found relevant chunks and generated an answer |
+| `not_found` | No chunks passed the relevance gate |
+| `refused` | Query matched the safety blocklist |
+| `error` | Unexpected failure during retrieval |
+
+#### Sandbox / non-root execution
+
+The script does not require root. It only needs:
+
+- Read access to the input directory and `data/chroma_db/`
+- Write access to the output directory
+
+Run it from the repo root as a normal user:
+
+```bash
+bash ./scripts/run.sh --input data/test_queries --output output/results.json
+```
+
+The `output/` directory is gitignored; do not commit generated artifacts.
 
 ---
 

@@ -220,3 +220,5 @@ __marimo__/
 # KMS Core AI — Project specific
 data/chroma_db/
 outputs/
+output/
+output/*.json

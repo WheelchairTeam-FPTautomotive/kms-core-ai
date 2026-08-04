@@ -1,64 +1,54 @@
 [
   {
     "query": "Hệ thống điều hòa HVAC được điều khiển như thế nào?",
-    "answer": "Dựa trên thông tin trong tài liệu, hệ thống điều hòa HVAC được điều khiển như sau:\n\n1. Khi hệ thống phát hiện nhu cầu sưởi ấm hoặc làm mát, nó xác định bộ điều nhiệt và bộ phận sưởi ấm hoặc làm mát cần bật hoặc tắt (**H/C Request**).\n\n2. Khi có yêu cầu bật/tắt bộ phận sưởi ấm hoặc làm mát, hệ thống THEMAS sẽ tạo ra yêu cầu tương ứng (**Generate H/C Request**). Yêu cầu này bao gồm chỉ định bộ phận sưởi ấm hoặc làm mát và cờ chỉ định xem bộ phận đó cần được bật hay tắt.\n\n3. Sau khi yêu cầu được phê duyệt, hệ thống THEMAS sẽ cung cấp tín hiệu điều khiển cần thiết cho bộ phận đó (**Generate H/C Signal**). Tín hiệu này cũng cung cấp chỉ dẫn về trạng thái của bộ phận tại bộ điều nhiệt yêu cầu.\n\nTóm lại, hệ thống điều khiển HVAC thông qua các bước:\n- Phát hiện nhu cầu điều hòa → Tạo yêu cầu điều khiển → Phê duyệt yêu cầu → Cung cấp tín hiệu điều khiển.",
-    "citations": [
-      {
-        "document_id": "414fc8c90aa3d3184b94aa776ef8303ba3ab5a189ef468758dc6666b281a0742",
-        "document_name": "1998 - themas.pdf",
-        "section": "D_THEMAS_SRS_001",
-        "page": 18,
-        "matched_text": "D_THEMAS_SRS_001 \n 3 - 7\nH/C ON/OFF Request \n \n3.1.5.2 Generate Unit Unavailable Event (SRS-012) \n \n3.1.5.2.1 Introduction \nWhen a request for a heating unit or cooling to be turned is \ndenied, an event shall be generated and the THEMAS system shall \nrecord that event.  The information in these even"
-      },
-      {
-        "document_id": "414fc8c90aa3d3184b94aa776ef8303ba3ab5a189ef468758dc6666b281a0742",
-        "document_name": "1998 - themas.pdf",
-        "section": "D_THEMAS_SRS_001",
-        "page": 33,
-        "matched_text": "D_THEMAS_SRS_001 \n C - 4\n (None) \n \nNext Higher Dictionary Where Used \n (None) \n \nOutput From Transforms \n Generate Event Data \n Generate Unit Unavailable Event \n THEMAS Context Diagram \n \nH/C Request \n \nAllowed Meanings \n String \n \nNotes \n When the system detects a need for heating or cooling, this"
-      },
-      {
-        "document_id": "03fc3c1e24651b1a8aae5ee9b2b7d206fd56cf5ebda1d2607a1ce0d7b11fe1a4",
-        "document_name": "2003 - pnnl.pdf",
-        "section": "Automated  Diagnostics    Version:           1.1",
-        "page": 10,
-        "matched_text": ".g. AEC\nMicrologger)\nFixed Data\nAutomatic and user-\ndefined plots\nManual visual\ndiagnostics\nprocess\nPreprocessing\nDiagnostic\nprocess\nClient\nDiagnostic\nresults\nOutput\nprocess\nData Visualization\nSoftware\n(e.g. Enforma\nSoftware)\nSensed Data\nSensed Data\n \nFigure 1.  Current HVAC Diagnostic Process"
-      }
-    ],
-    "status": "success"
+    "answer": "Không tìm thấy thông tin phù hợp trong tài liệu kỹ thuật của xe. Bạn có thể hỏi cách khác hoặc chủ đề có trong manual.",
+    "citations": [],
+    "status": "not_found"
   },
   {
     "query": "Làm thế nào kích hoạt phanh khẩn cấp ADAS?",
-    "answer": "Trong ngữ cảnh tài liệu được cung cấp, không có thông tin nào đề cập đến việc kích hoạt phanh khẩn cấp ADAS. Các tài liệu chủ yếu liên quan đến các khái niệm như PFD/RS, PDA, dự án, ngân sách, và các quy trình liên quan đến hệ thống AKSAS Writer, cũng như các thông số kỹ thuật của vệ tinh Landsat 7. Do đó, tôi không thể cung cấp hướng dẫn về việc kích hoạt phanh khẩn cấp ADAS dựa trên các tài liệu này.",
+    "answer": "Không tìm thấy thông tin phù hợp trong tài liệu kỹ thuật của xe. Bạn có thể hỏi cách khác hoặc chủ đề có trong manual.",
+    "citations": [],
+    "status": "not_found"
+  },
+  {
+    "query": "Áp suất lốp tiêu chuẩn là bao nhiêu?",
+    "answer": "Hyundai Ioniq 5 - Huong dan van van hanh xe dien 1. Pin cao ap (High Voltage Battery): Xe su dung pin 72.6 kWh.",
     "citations": [
       {
-        "document_id": "4d2d52eadd58091b5dbea1067c430303ba0c00b4c633e08382eb1b6cd1626dd7",
-        "document_name": "RROWDyS.pdf",
-        "section": "Trang 99",
-        "page": 99,
-        "matched_text": " # \n17.1.1.12. PFD / RS# \n17.1.1.13. PDA AR# \n17.1.1.14. Project Scope \n18. AKSAS Writer Program Interface – really crappy system (Joanne) \n18.1. Attributes Required  \n18.1.1. SLA (Session Legislative Authority) \n18.1.2. PDA (project development authorization) \n18.1.3. Project \n18.1.3.1. AKSAS Numbe"
-      },
-      {
-        "document_id": "8089fc3a5cbf88223a9c6417362ac97eebce17bb8ae8915e4b99d65dbb67ce3e",
-        "document_name": "1995 - Landsat7.pdf",
-        "section": "LPS SRS - Rev 1 560-8SWR/0195",
-        "page": 146,
-        "matched_text": "and_Parms.CCA_Method and Valid_Band_Parms.\nCCA_Ratio).\nConstraints\nAny changes to the band parameters will take effect at the\nstart of the next contact period, which is identified in\nSub_Intv.Contact_Id.\nFunctional Breakdown\nGet any values for IDP_Band_Parms that are passed to this subsystem\nand val"
-      },
-      {
-        "document_id": "8089fc3a5cbf88223a9c6417362ac97eebce17bb8ae8915e4b99d65dbb67ce3e",
-        "document_name": "1995 - Landsat7.pdf",
-        "section": "LPS SRS - Rev 1 560-8SWR/0195",
-        "page": 185,
-        "matched_text": "LPS SRS - Rev 1 560-8SWR/0195\nNAME:\n7.2\nTITLE:\nSend DAN\nINPUT/OUTPUT:\nDAN_Suspended : data_inout\nLDT_DAN_Status : data_out\nDAN_Transmission_Time : data_out\nDAN : data_out\nLDT_Resend_DAN_Drct : data_in\nDAN_Transfer_State : data_in\nCurrent_Time : data_in\nContact_File_Names : data_in\nInternal_DAN : dat"
+        "document_id": "724e0d436d736548e64cd89b77af29555b7bd93e064d4dafae6eac44f6d680ca",
+        "document_name": "Hyundai_Ioniq_5_Manual.pdf",
+        "section": "Trang 1",
+        "page": 1,
+        "matched_text": "Hyundai Ioniq 5 - Huong dan van van hanh xe dien\n1. Pin cao ap (High Voltage Battery): Xe su dung pin 72.6 kWh. De dam bao tuoi tho pin, khong nen sac day 100% qua thuong xuyen.\n2. He thong sac: Ho tro sac nhanh 350kW, tu 10% len 80% chi trong 18 phut.\n3. Dong co dien: Dong co dien dat o truc sau ho"
       }
     ],
     "status": "success"
   },
   {
-    "query": "Áp suất lốp tiêu chuẩn là bao nhiêu?",
-    "answer": "Tôi chỉ hỗ trợ giải đáp các câu hỏi liên quan đến vận hành và hướng dẫn kỹ thuật của xe.",
+    "query": "Hệ thống điều hòa HVAC được điều khiển như thế nào?",
+    "answer": "Không tìm thấy thông tin phù hợp trong tài liệu kỹ thuật của xe. Bạn có thể hỏi cách khác hoặc chủ đề có trong manual.",
     "citations": [],
-    "status": "refused"
+    "status": "not_found"
+  },
+  {
+    "query": "Làm thế nào kích hoạt phanh khẩn cấp ADAS?",
+    "answer": "Không tìm thấy thông tin phù hợp trong tài liệu kỹ thuật của xe. Bạn có thể hỏi cách khác hoặc chủ đề có trong manual.",
+    "citations": [],
+    "status": "not_found"
+  },
+  {
+    "query": "Áp suất lốp tiêu chuẩn là bao nhiêu?",
+    "answer": "Hyundai Ioniq 5 - Huong dan van van hanh xe dien 1. Pin cao ap (High Voltage Battery): Xe su dung pin 72.6 kWh.",
+    "citations": [
+      {
+        "document_id": "724e0d436d736548e64cd89b77af29555b7bd93e064d4dafae6eac44f6d680ca",
+        "document_name": "Hyundai_Ioniq_5_Manual.pdf",
+        "section": "Trang 1",
+        "page": 1,
+        "matched_text": "Hyundai Ioniq 5 - Huong dan van van hanh xe dien\n1. Pin cao ap (High Voltage Battery): Xe su dung pin 72.6 kWh. De dam bao tuoi tho pin, khong nen sac day 100% qua thuong xuyen.\n2. He thong sac: Ho tro sac nhanh 350kW, tu 10% len 80% chi trong 18 phut.\n3. Dong co dien: Dong co dien dat o truc sau ho"
+      }
+    ],
+    "status": "success"
   }
 ]
