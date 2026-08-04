@@ -115,6 +115,7 @@ Edit the `.env` file to select either **Local ChromaDB** or **AWS OpenSearch Ser
 ```env
 VECTOR_DB_TYPE=chroma                  # Set to 'chroma'
 USE_LOCAL_EMBEDDING=true               # Uses local default ONNX all-MiniLM-L6-v2 (~10ms latency)
+LLM_PROVIDER=none                      # Extractive short driver answer (no LLM)
 
 # Local ChromaDB config
 CHROMA_PATH=data/chroma_db
@@ -156,6 +157,39 @@ CHUNK_OVERLAP=64
 PORT=8001
 LOG_LEVEL=INFO
 ```
+
+### Unified answer generation (driver-facing)
+
+Retrieval always returns `answer` + `citations`. The **answer** is synthesized for the driver (short, TTS-friendly). Citations stay in the API for evidence UI.
+
+| `LLM_PROVIDER` | Behavior |
+|---|---|
+| `none` | Extractive 1–2 sentence summary from top chunk (strips `[file.pdf …]` metadata for TTS) |
+| `bedrock` | Shared system prompt + params via Bedrock Converse |
+| `openai_compatible` | Same prompt/params via OpenAI `/v1/chat/completions` (Ollama, LM Studio, llama.cpp server, vLLM, LocalAI) |
+
+```env
+LLM_PROVIDER=openai_compatible
+OPENAI_BASE_URL=http://localhost:11434/v1
+OPENAI_MODEL=llama3.2
+OPENAI_API_KEY=ollama
+LLM_TEMPERATURE=0.0
+LLM_MAX_TOKENS=400
+RAG_TOP_K=3
+RAG_CONTEXT_CHARS=2400
+RAG_MAX_DISTANCE=1.15
+# SYSTEM_PROMPT=...   # optional override
+```
+
+### Relevance gate (anti-hallucination)
+
+Chroma returns L2 distances with the default ONNX embedder. Hits with `distance > RAG_MAX_DISTANCE` are discarded. If nothing remains, Core AI returns `status=not_found` and a short TTS-safe refusal — it will **not** invent answers from `pontis.pdf` / `tachonet.pdf` style junk neighbors.
+
+Collection metadata records `hnsw:space=l2`. After a future cosine re-index (`ingest --reset`), retune `RAG_MAX_DISTANCE`.
+
+### Free-talk mode
+
+`POST /api/v1/search` accepts `"mode": "rag" | "free_talk"`. Gateway routes greetings to `free_talk` (no retrieval). With `LLM_PROVIDER=none`, free-talk returns a polite redirect to manual-style questions.
 
 ---
 

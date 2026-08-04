@@ -1,20 +1,70 @@
+from contextlib import asynccontextmanager
+from typing import Literal
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from core.config import settings
 from pipelines.solve_problem import solve_automotive_query_auto
 from utils.logger import setup_logger
 
 logger = setup_logger("kms_core_api")
 
+
+def _warm_llm_background() -> None:
+    """One-token Ollama ping so first demo query is not cold."""
+    provider = (settings.llm_provider or "none").strip().lower()
+    if provider not in {"openai_compatible", "openai", "ollama", "lmstudio"}:
+        return
+    if not (settings.openai_base_url or "").strip():
+        return
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(
+            api_key=settings.openai_api_key or "ollama",
+            base_url=settings.openai_base_url.rstrip("/"),
+            timeout=30.0,
+        )
+        client.chat.completions.create(
+            model=settings.openai_model,
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=1,
+            temperature=0,
+        )
+        logger.info("LLM warm-up completed for provider=%s", provider)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("LLM warm-up skipped/failed: %s", exc)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    import threading
+
+    threading.Thread(target=_warm_llm_background, daemon=True).start()
+    yield
+
+
 app = FastAPI(
     title="KMS Core AI RAG Engine",
     description="Internal search microservice serving grounded manual lookups with citations.",
     version="1.0.0",
+    lifespan=lifespan,
 )
+
 
 class SearchRequest(BaseModel):
     query: str = Field(..., example="How do I activate the HVAC system?")
-    mode: str = Field(default="rag")
+    # --- START MODIFICATION ---
+    mode: Literal["rag", "free_talk"] = Field(
+        default="rag",
+        description="rag = retrieve+gate+answer; free_talk = LLM/chitchat without documents",
+    )
+    language: Literal["vi", "en"] = Field(
+        default="vi",
+        description="UI locale — answer language follows this, not the query language",
+    )
+    # --- END MODIFICATION ---
 
 
 class CitationInfo(BaseModel):
@@ -31,6 +81,7 @@ class SearchResponse(BaseModel):
     citations: list[CitationInfo]
     status: str
 
+
 @app.get("/health")
 async def root_health_check():
     return {"status": "ready", "service": "kms-core-ai"}
@@ -44,7 +95,11 @@ async def health_check():
 @app.post("/api/v1/search", response_model=SearchResponse)
 async def search_knowledge_base(payload: SearchRequest):
     try:
-        result = solve_automotive_query_auto(payload.query, mode=payload.mode)
+        result = solve_automotive_query_auto(
+            payload.query,
+            mode=payload.mode,
+            language=payload.language,
+        )
         return result
     except Exception as e:  # noqa: BLE001
         logger.error(f"RAG execution failed: {e}")

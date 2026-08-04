@@ -1,10 +1,9 @@
-import json
 import time
 from typing import Any
 
+from core.answer_generator import generate_driver_answer
 from core.aws_client import (
     generate_bedrock_embeddings,
-    get_bedrock_runtime_client,
     get_opensearch_client,
 )
 from core.config import settings
@@ -17,7 +16,8 @@ logger = setup_logger("bedrock_rag_pipeline")
 
 def solve_automotive_query_bedrock(query: str) -> dict[str, Any]:
     """
-    Execute AWS Bedrock Claude 3.5 Sonnet RAG pipeline with Amazon OpenSearch Serverless k-NN retrieval.
+    Execute AWS Bedrock RAG pipeline with Amazon OpenSearch Serverless k-NN retrieval.
+    Answer synthesis uses the shared AnswerGenerator (LLM_PROVIDER / GenerationConfig).
     """
     start_time = time.time()
     logger.info(f"AWS Bedrock RAG processing query: '{query}'")
@@ -41,11 +41,12 @@ def solve_automotive_query_bedrock(query: str) -> dict[str, Any]:
 
         # 3. Retrieve context chunks from OpenSearch Serverless
         opensearch_client = get_opensearch_client()
+        top_k = settings.rag_top_k or 3
         hits = search_opensearch_knn(
             client=opensearch_client,
             index_name=settings.opensearch_index,
             query_vector=query_vector,
-            top_k=3,
+            top_k=top_k,
         )
 
         citations = []
@@ -75,55 +76,15 @@ def solve_automotive_query_bedrock(query: str) -> dict[str, Any]:
                 "status": "success",
             }
 
-        context_str = "\n\n".join(context_snippets)
-
-        # 4. Construct prompt and invoke Bedrock Claude 3.5 Sonnet
-        system_prompt = (
-            "Bạn là trợ lý AI chuyên gia giải đáp tài liệu kỹ thuật xe hơi. "
-            "Hãy trả lời câu hỏi của người dùng DỰA HOÀN TOÀN VÀO thông tin trong ngữ cảnh (Context) được cung cấp dưới đây. "
-            "Nếu thông tin trong context không đủ để trả lời, hãy lịch sự thông báo không tìm thấy thông tin trong tài liệu. "
-            "Trả lời ngắn gọn, chính xác, khách quan và chuyên nghiệp."
+        # --- START MODIFICATION ---
+        # Shared generator: OpenSearch path defaults synthesis to Bedrock when provider is none.
+        provider = (settings.llm_provider or "none").strip().lower()
+        answer = generate_driver_answer(
+            query,
+            context_snippets,
+            provider="bedrock" if provider == "none" else None,
         )
-
-        bedrock_client = get_bedrock_runtime_client()
-        model_id = settings.bedrock_model_id or "global.amazon.nova-2-lite-v1:0"
-
-        try:
-            response = bedrock_client.converse(
-                modelId=model_id,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [{"text": f"Ngữ cảnh tài liệu (Context):\n{context_str}\n\nCâu hỏi: {query}"}],
-                    }
-                ],
-                system=[{"text": system_prompt}],
-                inferenceConfig={"temperature": 0.0, "maxTokens": 1000},
-            )
-            answer = response["output"]["message"]["content"][0]["text"].strip()
-        except Exception as converse_err:
-            logger.warning(f"Bedrock Converse API call failed ({converse_err}), attempting invoke_model fallback...")
-            payload = {
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 1000,
-                "temperature": 0.0,
-                "system": system_prompt,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": f"Ngữ cảnh tài liệu (Context):\n{context_str}\n\nCâu hỏi: {query}",
-                    }
-                ],
-            }
-            response = bedrock_client.invoke_model(
-                modelId=model_id,
-                contentType="application/json",
-                accept="application/json",
-                body=json.dumps(payload),
-            )
-            response_body = json.loads(response["body"].read())
-            answer = response_body.get("content", [{}])[0].get("text", "").strip()
-
+        # --- END MODIFICATION ---
 
         elapsed_ms = (time.time() - start_time) * 1000
         logger.info(f"Bedrock RAG response generated in {elapsed_ms:.2f}ms with {len(citations)} citations.")
