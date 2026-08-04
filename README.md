@@ -205,6 +205,69 @@ To clear existing collections and re-index everything from scratch:
 uv run python src/pipelines/ingest.py --target chroma --reset
 ```
 
+### Reproducible Chroma ingest for the HACKATHON corpus
+
+The HACKATHON corpus is split into two recursive folders:
+
+- `data/docs_corpus/` — category-organized PDFs (e.g. by year/system). Files are identified by their **basename stem** (`<filename>` without `.pdf`).
+- `data/docs_pdf/` — archive PDFs. Files are identified by their **SHA-256 content hash**, so renames or moves do not create duplicate embeddings.
+
+`data/docs_corpus/mapping.json` maps content hashes to human-readable titles. The ingest pipeline uses it for display names and citations. Keep `mapping.json` in version control with the PDFs; do **not** commit the generated Chroma index.
+
+#### One-liner
+
+```bash
+uv run python src/pipelines/ingest.py --target chroma --reset
+```
+
+The `--reset` flag deletes the existing `automotive_manuals` collection and rebuilds the index from scratch.
+
+#### Wrapper scripts
+
+For convenience, use the cross-platform wrappers:
+
+```bash
+# Linux / macOS / WSL
+bash ./scripts/ingest_chroma.sh
+```
+
+```powershell
+# Windows PowerShell
+.\scripts\ingest_chroma.ps1
+```
+
+Both pass through extra arguments, for example:
+
+```bash
+bash ./scripts/ingest_chroma.sh --batch-size 100
+```
+
+#### Custom corpus locations
+
+If the HACKATHON PDFs live outside this repo, set the paths in `.env`:
+
+```env
+DOCS_PDF_DIR=H:\.HACKATHON\docs_pdf
+DOCS_CORPUS_DIR=H:\.HACKATHON\docs_corpus
+```
+
+Then run the same one-liner.
+
+#### What is gitignored
+
+`data/chroma_db/` is ignored. Rebuild it on every clean machine with the one-liner above.
+
+#### Expected output
+
+```text
+INFO: Found 84 target PDF documents to process.
+INFO: === Ingestion Complete ===
+INFO: Processed Documents: 84
+INFO: Total Chunks Stored: <chunk_count>
+```
+
+Two machines with identical PDFs and `mapping.json` will produce the same document IDs and chunk IDs.
+
 > ### 🧠 Smart Text Normalization & PDF Spacing Fixes
 > PyPDF's default layout extraction can introduce arbitrary line breaks and character spacing issues (e.g., `progra mme` or `Syste m`). 
 > 
