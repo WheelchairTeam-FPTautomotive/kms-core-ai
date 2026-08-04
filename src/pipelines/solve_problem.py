@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 
 import chromadb
 from chromadb.utils import embedding_functions
+from openai import OpenAI
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
