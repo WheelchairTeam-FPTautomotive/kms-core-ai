@@ -14,6 +14,7 @@ app = FastAPI(
 
 class SearchRequest(BaseModel):
     query: str = Field(..., example="How do I activate the HVAC system?")
+    mode: str = Field(default="rag")
 
 
 class CitationInfo(BaseModel):
@@ -43,7 +44,7 @@ async def health_check():
 @app.post("/api/v1/search", response_model=SearchResponse)
 async def search_knowledge_base(payload: SearchRequest):
     try:
-        result = solve_automotive_query_auto(payload.query)
+        result = solve_automotive_query_auto(payload.query, mode=payload.mode)
         return result
     except Exception as e:  # noqa: BLE001
         logger.error(f"RAG execution failed: {e}")

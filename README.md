@@ -9,7 +9,7 @@ This is the Core AI RAG (Retrieval-Augmented Generation) Engine for the **Tracea
 * **Language**: Python 3.12+
 * **Package Manager**: `uv`
 * **Framework**: FastAPI (exposes internal REST interface on port `8001`)
-* **Vector Stores**: 
+* **Vector Stores**:
   - **Local**: ChromaDB (with local ONNX `all-MiniLM-L6-v2` embeddings for **$0 Cost & ~10ms Latency**)
   - **Cloud**: AWS OpenSearch Serverless (AOSS) (with Bedrock Titan Embeddings)
 * **LLM & Cloud Services**: AWS Bedrock (Nova / Claude), AWS Bedrock Titan Embeddings v2
@@ -22,11 +22,12 @@ This is the Core AI RAG (Retrieval-Augmented Generation) Engine for the **Tracea
 
 Before you begin, ensure the following are installed on your machine:
 
-| Tool | Version | Install |
-| ---- | ------- | ------- |
-| **Python** | 3.12+ | [python.org/downloads](https://www.python.org/downloads/) |
-| **uv** | latest | `pip install uv` (or `pipx install uv`) |
-| **Git** | any | [git-scm.com](https://git-scm.com/) |
+
+| Tool       | Version | Install                                                   |
+| ------------ | --------- | ----------------------------------------------------------- |
+| **Python** | 3.12+   | [python.org/downloads](https://www.python.org/downloads/) |
+| **uv**     | latest  | `pip install uv` (or `pipx install uv`)                   |
+| **Git**    | any     | [git-scm.com](https://git-scm.com/)                       |
 
 Verify your setup:
 
@@ -94,11 +95,13 @@ This creates a virtual environment `.venv/` and installs all required dependenci
 Create your local `.env` configuration file:
 
 **Linux / macOS:**
+
 ```bash
 cp .env.example .env
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
 Copy-Item .env.example .env
 ```
@@ -108,6 +111,7 @@ Copy-Item .env.example .env
 Edit the `.env` file to select either **Local ChromaDB** or **AWS OpenSearch Serverless**:
 
 ##### Option A: Local ChromaDB (Free, $0 Cost, Offline)
+
 ```env
 VECTOR_DB_TYPE=chroma                  # Set to 'chroma'
 USE_LOCAL_EMBEDDING=true               # Uses local default ONNX all-MiniLM-L6-v2 (~10ms latency)
@@ -130,6 +134,7 @@ LOG_LEVEL=INFO
 ```
 
 ##### Option B: AWS OpenSearch Serverless (Cloud Scale)
+
 ```env
 VECTOR_DB_TYPE=opensearch              # Set to 'opensearch'
 USE_LOCAL_EMBEDDING=false              # Uses AWS Titan Text Embeddings
@@ -167,13 +172,15 @@ uv run python src/pipelines/ingest.py --target opensearch
 ```
 
 To clear existing collections and re-index everything from scratch:
+
 ```bash
 uv run python src/pipelines/ingest.py --target chroma --reset
 ```
 
 > ### 🧠 Smart Text Normalization & PDF Spacing Fixes
-> PyPDF's default layout extraction can introduce arbitrary line breaks and character spacing issues (e.g., `progra mme` or `Syste m`). 
-> 
+>
+> PyPDF's default layout extraction can introduce arbitrary line breaks and character spacing issues (e.g., `progra mme` or `Syste m`).
+>
 > Our ingestion pipeline uses a **Vocab-based Word Joiner** built by Nguyen Minh Thuan (AI Lead) that resolves word spacing fragmentation using a 10,000 English wordlist (`google_10000_english.txt`) + technical keywords. The algorithm processes text in $O(N)$ token cycles to automatically rejoin split terms while leaving legitimate word boundaries (like `in to`) intact.
 
 ---
@@ -187,6 +194,7 @@ uv run uvicorn main:app --app-dir src --host 0.0.0.0 --port 8001 --reload
 ```
 
 The server REST documentation and health status will be accessible at:
+
 - API Endpoint: `http://localhost:8001/api/v1/search`
 - Health check: `http://localhost:8001/api/v1/health`
 
@@ -197,26 +205,35 @@ The server REST documentation and health status will be accessible at:
 The project comes with a comprehensive suite of unit tests, performance benchmarks, and semantic validation checks.
 
 ### 1. Run All Tests
+
 ```bash
 uv run pytest -s
 ```
+
 Verify chunking logic, LLM answer synthesis, vector index retrieval, and latency constraints.
 
 ### 2. Spacing Quality Gate Verification
+
 Verify that none of the 84 PDF manuals suffer from character/word fragmentation when queried:
+
 ```bash
 uv run python tests/test_all_pdfs_api.py
 ```
+
 This script connected to the active vector database, generates technical search queries for each unique PDF manual, and analyzes answers/citations for invalid spaced characters.
 
 ### 3. Latency SLA Benchmarking
+
 Benchmark retrieval-augmented generation latency (requires server running):
+
 ```bash
 uv run python tests/test_latency.py
 ```
 
 ### 4. Offline Evaluator CLI (`scripts/run.sh`)
+
 Execute batch processing for the hackathon evaluator contract:
+
 ```bash
 bash ./scripts/run.sh --input data/test_queries --output output/results.json
 ```
@@ -228,6 +245,7 @@ bash ./scripts/run.sh --input data/test_queries --output output/results.json
 ### RAG Search Query (`POST /api/v1/search`)
 
 **Request Payload:**
+
 ```json
 {
   "query": "Hệ thống điều hòa HVAC được điều khiển qua đâu?",
@@ -236,6 +254,7 @@ bash ./scripts/run.sh --input data/test_queries --output output/results.json
 ```
 
 **Response:**
+
 ```json
 {
   "query": "Hệ thống điều hòa HVAC được điều khiển qua đâu?",

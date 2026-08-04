@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 
 import chromadb
 from chromadb.utils import embedding_functions
+from openai import OpenAI
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -175,48 +176,89 @@ def _cached_vector_query(query: str, top_k: int = 3) -> tuple:
     return tuple(formatted_results)
 
 
-def solve_automotive_query_live(query: str) -> Dict[str, Any]:
+def solve_automotive_query_live(query: str, mode: str = "rag") -> Dict[str, Any]:
     """Live ChromaDB vector retrieval solver with sub-200ms performance."""
     start_time = time.time()
-    logger.info(f"Live RAG processing query: '{query}'")
+    logger.info(f"Live RAG processing query: '{query}', mode: '{mode}'")
 
-    is_valid, refusal_reason = check_safety_and_scope(query)
-    if not is_valid:
-        return {
-            "query": query,
-            "answer": refusal_reason,
-            "citations": [],
-            "status": "refused",
-        }
+    if mode != "free_talk":
+        is_valid, refusal_reason = check_safety_and_scope(query)
+        if not is_valid:
+            return {
+                "query": query,
+                "answer": refusal_reason,
+                "citations": [],
+                "status": "refused",
+            }
 
     try:
-        raw_citations = _cached_vector_query(query, top_k=3)
         citations = []
         snippets = []
-
-        for idx, (doc_id, doc_name, section, page, text_snippet) in enumerate(
-            raw_citations, start=1
-        ):
-            citations.append(
-                {
-                    "document_id": doc_id,
-                    "document_name": doc_name,
-                    "section": section,
-                    "page": page,
-                    "matched_text": text_snippet,
-                }
-            )
-            snippets.append(
-                f"{idx}. [{doc_name} - {section} (Trang {page})]: {text_snippet}"
-            )
-
-        if snippets:
-            answer = (
-                f"Dựa trên tài liệu hướng dẫn kỹ thuật tra cứu được:\n"
-                + "\n".join(snippets[:2])
-            )
+        
+        if mode == "free_talk":
+            # Bypass vector retrieval for free-talk
+            pass
         else:
+            raw_citations = _cached_vector_query(query, top_k=3)
+            for idx, (doc_id, doc_name, section, page, text_snippet) in enumerate(
+                raw_citations, start=1
+            ):
+                citations.append(
+                    {
+                        "document_id": doc_id,
+                        "document_name": doc_name,
+                        "section": section,
+                        "page": page,
+                        "matched_text": text_snippet,
+                    }
+                )
+                snippets.append(
+                    f"{idx}. [{doc_name} - {section} (Trang {page})]: {text_snippet}"
+                )
+
+        if not snippets and mode != "free_talk":
             answer = "Không tìm thấy thông tin phù hợp trong tài liệu kỹ thuật của xe."
+        else:
+            try:
+                # Build context for LLM
+                context_str = "\n\n".join(snippets)
+                
+                if mode == "free_talk":
+                    system_prompt = (
+                        "Bạn là Wheelchair Copilot, trợ lý ảo thông minh trên xe hơi, phục vụ cho giọng đọc nhân tạo (Voice Assistant). "
+                        "Nhiệm vụ của bạn là trò chuyện vui vẻ, tự nhiên, thân thiện và ngắn gọn với người lái xe. "
+                        "YÊU CẦU QUAN TRỌNG: Câu trả lời phải thật tự nhiên, lưu loát, và hoàn toàn bằng văn xuôi. "
+                        "TUYỆT ĐỐI KHÔNG dùng các ký hiệu đặc biệt, gạch đầu dòng, hay các ký tự làm máy đọc vấp."
+                    )
+                else:
+                    system_prompt = (
+                        "Bạn là trợ lý AI chuyên gia giải đáp tài liệu kỹ thuật xe hơi, phục vụ cho giọng đọc nhân tạo (Voice Assistant). "
+                        "Hãy trả lời câu hỏi của người dùng DỰA HOÀN TOÀN VÀO thông tin trong ngữ cảnh (Context). "
+                        "YÊU CẦU QUAN TRỌNG: Câu trả lời phải thật tự nhiên, lưu loát, và hoàn toàn bằng văn xuôi. "
+                        "TUYỆT ĐỐI KHÔNG dùng các ký hiệu đặc biệt, dấu ngoặc vuông, trích dẫn tài liệu [PDF], gạch đầu dòng, hay các ký tự kỹ thuật làm máy đọc vấp. "
+                        "Nếu thông tin không đủ, hãy trả lời ngắn gọn là không tìm thấy."
+                    )
+
+                base_url = settings.openai_base_url
+                api_key = settings.openai_api_key or "sk-dummy"
+                model_name = settings.openai_model
+
+                client = OpenAI(base_url=base_url, api_key=api_key)
+                
+                logger.info(f"Calling LLM via 9router ({model_name}) to summarize chunks for TTS...")
+                completion = client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"Câu hỏi: {query}" if mode == "free_talk" else f"Ngữ cảnh tài liệu:\n{context_str}\n\nCâu hỏi: {query}"}
+                    ],
+                    temperature=0.3,
+                    max_tokens=1000,
+                )
+                answer = completion.choices[0].message.content.strip()
+            except Exception as llm_err:
+                logger.error(f"LLM Synthesis failed: {llm_err}")
+                answer = "Có lỗi xảy ra khi tóm tắt thông tin từ tài liệu."
 
         elapsed_ms = (time.time() - start_time) * 1000
         logger.info(
@@ -240,7 +282,7 @@ def solve_automotive_query_live(query: str) -> Dict[str, Any]:
         }
 
 
-def solve_automotive_query_auto(query: str) -> Dict[str, Any]:
+def solve_automotive_query_auto(query: str, mode: str = "rag") -> Dict[str, Any]:
     """
     Automatic router function dispatching queries to AWS Bedrock/OpenSearch or ChromaDB
     based on settings.vector_db_type configuration.
@@ -249,7 +291,7 @@ def solve_automotive_query_auto(query: str) -> Dict[str, Any]:
         from pipelines.bedrock_rag import solve_automotive_query_bedrock
         return solve_automotive_query_bedrock(query)
 
-    return solve_automotive_query_live(query)
+    return solve_automotive_query_live(query, mode=mode)
 
 # if __name__ == "__main__":
 #     parser = argparse.ArgumentParser(description="KMS RAG Offline Evaluator CLI")
