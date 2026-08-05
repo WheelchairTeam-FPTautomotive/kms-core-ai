@@ -369,11 +369,15 @@ if __name__ == "__main__":
     results: List[Dict[str, Any]] = []
     total_queries = 0
     skipped_files = 0
+    skipped_items = 0
 
     json_files = sorted(input_dir.glob("*.json"))
     if not json_files:
         logger.warning(f"No .json files found in input directory: {args.input}")
 
+    # --- START MODIFICATION ---
+    # Pre-count for progress logs; accept str or {query, language} objects.
+    planned: List[tuple[str, str | None]] = []
     for query_file in json_files:
         try:
             with query_file.open("r", encoding="utf-8") as f:
@@ -395,13 +399,35 @@ if __name__ == "__main__":
             continue
 
         for item in data:
-            if not isinstance(item, str):
-                logger.warning(f"Skipping non-string query in {query_file}: {item!r}")
-                continue
+            if isinstance(item, str):
+                planned.append((item, None))
+            elif isinstance(item, dict) and isinstance(item.get("query"), str):
+                lang = item.get("language")
+                if lang is not None and lang not in ("vi", "en"):
+                    logger.warning(
+                        f"Skipping invalid language in {query_file}: {lang!r}"
+                    )
+                    skipped_items += 1
+                    continue
+                planned.append((item["query"], lang if isinstance(lang, str) else None))
+            else:
+                logger.warning(
+                    f"Skipping unsupported query item in {query_file}: {item!r}"
+                )
+                skipped_items += 1
 
-            total_queries += 1
-            result = solve_automotive_query_auto(item)
-            results.append(result)
+    total_planned = len(planned)
+    for idx, (query, language) in enumerate(planned, start=1):
+        preview = query if len(query) <= 72 else query[:69] + "..."
+        print(f"[{idx}/{total_planned}] Processing: {preview}", flush=True)
+        logger.info(f"[{idx}/{total_planned}] Processing: {preview}")
+        total_queries += 1
+        if language is None:
+            result = solve_automotive_query_auto(query)
+        else:
+            result = solve_automotive_query_auto(query, language=language)
+        results.append(result)
+    # --- END MODIFICATION ---
 
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
@@ -409,7 +435,8 @@ if __name__ == "__main__":
 
     logger.info(
         f"Batch evaluation finished: processed {len(json_files)} file(s), "
-        f"ran {total_queries} query(ies), skipped {skipped_files} file(s). "
+        f"ran {total_queries} query(ies), skipped {skipped_files} file(s), "
+        f"skipped {skipped_items} item(s). "
         f"Results written to: {args.output}"
     )
 

@@ -348,6 +348,17 @@ Each `.json` file in the input directory must contain a list of query strings:
 
 Malformed or non-list JSON files are skipped with a warning.
 
+List items may also be objects (S2 golden export) for locale-aware eval:
+
+```json
+[
+  {"query": "How does Camry HVAC work?", "language": "en"},
+  {"query": "hvac la gi tren camry", "language": "vi"}
+]
+```
+
+Plain strings remain supported (language defaults to `vi`).
+
 #### Output format
 
 `output/results.json` is a JSON array of result objects:
@@ -377,6 +388,30 @@ Possible `status` values:
 |---|---|
 | `success` | Found relevant chunks and generated an answer |
 | `not_found` | No chunks passed the relevance gate |
+| `refused` | Safety / scope refusal |
+| `error` | Pipeline exception |
+
+### 5. Sprint 2 Golden Set (issue #9)
+
+Labeled suite: `data/test_queries/golden_set_s2.json` (40 cases with `expected_status` + citation keywords).
+
+```bash
+# Export isolated input (does not mix legacy fixtures)
+uv run python scripts/export_golden_queries.py
+
+# Batch evaluate (progress logs: [i/N] Processing: ...)
+bash ./scripts/run.sh --input data/test_queries/golden_s2_input --output output/golden_results.json
+
+# Score status + citation grounding (fails if <90%)
+uv run python scripts/score_golden.py \
+  --golden data/test_queries/golden_set_s2.json \
+  --results output/golden_results.json \
+  --out output/golden_score.md
+```
+
+Document the model used in the score header (`OPENAI_MODEL` / `LLM_PROVIDER`). Freeze target is `qwen2.5:7b-instruct`; local fallback `llama3.2:3b` is acceptable when documented.
+
+## REST API
 | `refused` | Query matched the safety blocklist |
 | `error` | Unexpected failure during retrieval |
 

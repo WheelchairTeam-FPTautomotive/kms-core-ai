@@ -1,0 +1,298 @@
+{
+  "generated_at_utc": "2026-08-05T16:10:54Z",
+  "git_sha": "0c1fa03",
+  "settings": {
+    "openai_model": "llama3.2:3b",
+    "llm_provider": "ollama",
+    "openai_base_url": "http://localhost:11434/v1",
+    "vector_db_type": "chroma",
+    "rag_max_distance": "1.15"
+  },
+  "threshold": 0.9,
+  "passed": 40,
+  "total": 40,
+  "pass_rate": 1.0,
+  "ok": true,
+  "cases": [
+    {
+      "id": "rag-en-01",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-en-02",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-en-03",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-en-04",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-en-05",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-en-06",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-en-07",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-en-08",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-en-09",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-en-10",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-vi-01",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-vi-02",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-vi-03",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-vi-04",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-vi-05",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-vi-06",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-tf-01",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-tf-02",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-tf-03",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-tf-04",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-adas-01",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-adas-02",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-tire-01",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "rag-tire-02",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "nf-01",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "not_found",
+      "actual_status": "not_found"
+    },
+    {
+      "id": "nf-02",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "not_found",
+      "actual_status": "not_found"
+    },
+    {
+      "id": "nf-03",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "not_found",
+      "actual_status": "not_found"
+    },
+    {
+      "id": "nf-04",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "not_found",
+      "actual_status": "not_found"
+    },
+    {
+      "id": "ref-01",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "refused",
+      "actual_status": "refused"
+    },
+    {
+      "id": "ref-02",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "refused",
+      "actual_status": "refused"
+    },
+    {
+      "id": "ref-03",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "refused",
+      "actual_status": "refused"
+    },
+    {
+      "id": "ref-04",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "refused",
+      "actual_status": "refused"
+    },
+    {
+      "id": "off-01",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "not_found",
+      "actual_status": "not_found"
+    },
+    {
+      "id": "off-02",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "not_found",
+      "actual_status": "not_found"
+    },
+    {
+      "id": "off-03",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "not_found",
+      "actual_status": "not_found"
+    },
+    {
+      "id": "off-04",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "not_found",
+      "actual_status": "not_found"
+    },
+    {
+      "id": "car-rag-01",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "car-rag-02",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "car-rag-03",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    },
+    {
+      "id": "car-rag-04",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "success",
+      "actual_status": "success"
+    }
+  ]
+}
