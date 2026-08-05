@@ -88,6 +88,5 @@ def is_ungrounded(answer: str, grounded_flag: bool | None) -> bool:
     text = (answer or "").strip()
     if looks_ungrounded(text):
         return True
-    if grounded_flag is False and not text:
-        return True
-    return False
+    # MODIFIED: Ruff SIM103 — return condition directly
+    return bool(grounded_flag is False and not text)
