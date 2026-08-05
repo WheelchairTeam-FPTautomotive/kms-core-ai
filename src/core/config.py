@@ -3,8 +3,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     openai_api_key: str = ""
-    openai_base_url: str = "http://localhost:20128/v1"
-    openai_model: str = "gemini-2.0-flash"
+    # MODIFIED: single definition (was duplicated below — broke Ruff PIE794 / AI CI)
+    openai_base_url: str = "http://localhost:11434/v1"  # Ollama OpenAI-compatible
+    openai_model: str = "llama3.2"
     chroma_path: str = "data/chroma_db"
     chroma_collection: str = "automotive_manuals"
     port: int = 8001
@@ -59,8 +60,6 @@ class Settings(BaseSettings):
         "đừng tự bịa các bước. "
         "Ưu tiên tiếng Việt trừ khi người dùng hỏi bằng tiếng Anh."
     )
-    openai_base_url: str = ""  # e.g. http://localhost:11434/v1 for Ollama
-    openai_model: str = "llama3.2"
     # --- END MODIFICATION ---
 
     model_config = SettingsConfigDict(
