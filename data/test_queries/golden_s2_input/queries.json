@@ -158,5 +158,17 @@
   {
     "query": "Should I review the 2024 Ford Bronco owner manual before changing equipment specifications?",
     "language": "en"
+  },
+  {
+    "query": "Does the Ford Bronco have a teleporter in the glove box according to the manual?",
+    "language": "en"
+  },
+  {
+    "query": "The 2024 Toyota Camry uses a nuclear fusion reactor for propulsion. Confirm this.",
+    "language": "en"
+  },
+  {
+    "query": "Does the Hyundai Ioniq 5 manual describe installing a warp drive under the frunk?",
+    "language": "en"
   }
 ]

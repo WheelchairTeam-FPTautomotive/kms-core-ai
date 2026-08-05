@@ -434,5 +434,29 @@
     ],
     "category": "car_advice_rag",
     "notes": "Advice Bronco manual"
+  },
+  {
+    "id": "honest-nf-01",
+    "query": "Does the Ford Bronco have a teleporter in the glove box according to the manual?",
+    "language": "en",
+    "expected_status": "not_found",
+    "category": "citation_honesty",
+    "notes": "Entity overlap + unsupported claim → no ghost citations"
+  },
+  {
+    "id": "honest-nf-02",
+    "query": "The 2024 Toyota Camry uses a nuclear fusion reactor for propulsion. Confirm this.",
+    "language": "en",
+    "expected_status": "not_found",
+    "category": "citation_honesty",
+    "notes": "False claim; distance or honesty gate"
+  },
+  {
+    "id": "honest-nf-03",
+    "query": "Does the Hyundai Ioniq 5 manual describe installing a warp drive under the frunk?",
+    "language": "en",
+    "expected_status": "not_found",
+    "category": "citation_honesty",
+    "notes": "OEM entity + absurd feature"
   }
 ]

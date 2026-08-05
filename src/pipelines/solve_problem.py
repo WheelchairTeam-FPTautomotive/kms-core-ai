@@ -264,8 +264,25 @@ def solve_automotive_query_live(
             }
 
         from core.answer_generator import generate_driver_answer
+        from core.grounding import is_ungrounded, parse_grounded_answer
 
-        answer = generate_driver_answer(query, snippets, language=language)
+        # --- START MODIFICATION ---
+        # Citation honesty: ungrounded soft-deny → not_found + empty cites (no ghost cards)
+        raw_answer = generate_driver_answer(query, snippets, language=language)
+        answer, grounded_flag = parse_grounded_answer(raw_answer)
+        if is_ungrounded(answer, grounded_flag):
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.info(
+                f"Live RAG ungrounded→not_found in {elapsed_ms:.2f}ms "
+                f"(flag={grounded_flag}, dropped_cites={len(citations)})"
+            )
+            return {
+                "query": query,
+                "answer": not_found_answer(language),
+                "citations": [],
+                "status": "not_found",
+            }
+        # --- END MODIFICATION ---
 
         elapsed_ms = (time.time() - start_time) * 1000
         logger.info(

@@ -1,6 +1,6 @@
 {
-  "generated_at_utc": "2026-08-05T16:10:54Z",
-  "git_sha": "0c1fa03",
+  "generated_at_utc": "2026-08-05T16:52:01Z",
+  "git_sha": "bc582c0",
   "settings": {
     "openai_model": "llama3.2:3b",
     "llm_provider": "ollama",
@@ -9,9 +9,9 @@
     "rag_max_distance": "1.15"
   },
   "threshold": 0.9,
-  "passed": 40,
-  "total": 40,
-  "pass_rate": 1.0,
+  "passed": 42,
+  "total": 43,
+  "pass_rate": 0.9767,
   "ok": true,
   "cases": [
     {
@@ -268,10 +268,10 @@
     },
     {
       "id": "car-rag-01",
-      "pass": true,
-      "reason": "ok",
+      "pass": false,
+      "reason": "status_mismatch expected=success actual=not_found",
       "expected_status": "success",
-      "actual_status": "success"
+      "actual_status": "not_found"
     },
     {
       "id": "car-rag-02",
@@ -293,6 +293,27 @@
       "reason": "ok",
       "expected_status": "success",
       "actual_status": "success"
+    },
+    {
+      "id": "honest-nf-01",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "not_found",
+      "actual_status": "not_found"
+    },
+    {
+      "id": "honest-nf-02",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "not_found",
+      "actual_status": "not_found"
+    },
+    {
+      "id": "honest-nf-03",
+      "pass": true,
+      "reason": "ok",
+      "expected_status": "not_found",
+      "actual_status": "not_found"
     }
   ]
 }

@@ -77,13 +77,29 @@ def solve_automotive_query_bedrock(query: str) -> dict[str, Any]:
             }
 
         # --- START MODIFICATION ---
-        # Shared generator: OpenSearch path defaults synthesis to Bedrock when provider is none.
+        # Shared generator + citation honesty gate (parity with Chroma live path).
+        from core.grounding import is_ungrounded, parse_grounded_answer
+        from core.locale_messages import not_found_answer
+
         provider = (settings.llm_provider or "none").strip().lower()
-        answer = generate_driver_answer(
+        raw_answer = generate_driver_answer(
             query,
             context_snippets,
             provider="bedrock" if provider == "none" else None,
         )
+        answer, grounded_flag = parse_grounded_answer(raw_answer)
+        if is_ungrounded(answer, grounded_flag):
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.info(
+                f"Bedrock RAG ungrounded→not_found in {elapsed_ms:.2f}ms "
+                f"(flag={grounded_flag}, dropped_cites={len(citations)})"
+            )
+            return {
+                "query": query,
+                "answer": not_found_answer("vi"),
+                "citations": [],
+                "status": "not_found",
+            }
         # --- END MODIFICATION ---
 
         elapsed_ms = (time.time() - start_time) * 1000
