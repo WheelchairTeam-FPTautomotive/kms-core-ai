@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     openai_api_key: str = ""
     # MODIFIED: single definition (was duplicated below — broke Ruff PIE794 / AI CI)
@@ -51,8 +52,6 @@ class Settings(BaseSettings):
         "đừng tự bịa các bước. "
         "Ưu tiên tiếng Việt trừ khi người dùng hỏi bằng tiếng Anh."
     )
-    openai_base_url: str = ""  # e.g. http://localhost:11434/v1 for Ollama
-    openai_model: str = "llama3.2"
 
     model_config = SettingsConfigDict(
         env_file=".env",

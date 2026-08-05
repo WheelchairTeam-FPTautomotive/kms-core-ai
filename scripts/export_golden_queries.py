@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Export golden_set_s2.json to run.sh-compatible input (query+language objects)."""
 
 from __future__ import annotations

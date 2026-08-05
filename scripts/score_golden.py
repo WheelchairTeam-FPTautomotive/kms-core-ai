@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Score golden_set_s2 results: status match + citation keyword grounding (≥90%)."""
 
 from __future__ import annotations
