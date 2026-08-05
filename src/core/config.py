@@ -1,6 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 class Settings(BaseSettings):
     openai_api_key: str = ""
     # MODIFIED: single definition (was duplicated below — broke Ruff PIE794 / AI CI)
@@ -11,20 +10,15 @@ class Settings(BaseSettings):
     port: int = 8001
     log_level: str = "INFO"
 
-    # Chunking Configuration
     chunk_window: int = 512
     chunk_overlap: int = 64
 
-    # Data Paths
     docs_pdf_dir: str = "data/docs_pdf"
     docs_corpus_dir: str = "data/docs_corpus"
 
-    # Embedding & Performance Settings
     use_local_embedding: bool = True
     embedding_model: str = "text-embedding-3-small"
-
-    # AWS & OpenSearch Configuration
-    aws_region: str = "us-east-1"
+    aws_region: str = "ap-southeast-1" # Singapore, ap-southeast-2 = Sydney
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     aws_session_token: str = ""
@@ -34,8 +28,6 @@ class Settings(BaseSettings):
     bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
     vector_db_type: str = "chroma"  # 'chroma' or 'opensearch'
 
-    # --- START MODIFICATION ---
-    # Unified generation config (Bedrock / OpenAI-compatible / none)
     llm_provider: str = "none"  # none | bedrock | openai_compatible
     system_prompt: str = (
         "Bạn là trợ lý giọng nói trên xe hơi cho tài xế. "
@@ -49,7 +41,6 @@ class Settings(BaseSettings):
     llm_top_p: float = 0.9
     rag_top_k: int = 3
     rag_context_chars: int = 2400
-    # Chroma DefaultEmbedding + L2 space: bad theft-query hits measured ~1.29+
     rag_max_distance: float = 1.15
     free_talk_system_prompt: str = (
         "Bạn là trợ lý giọng nói thân thiện trên xe. "
@@ -60,7 +51,8 @@ class Settings(BaseSettings):
         "đừng tự bịa các bước. "
         "Ưu tiên tiếng Việt trừ khi người dùng hỏi bằng tiếng Anh."
     )
-    # --- END MODIFICATION ---
+    openai_base_url: str = ""  # e.g. http://localhost:11434/v1 for Ollama
+    openai_model: str = "llama3.2"
 
     model_config = SettingsConfigDict(
         env_file=".env",
