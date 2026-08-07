@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Cold vs warm Core AI latency harness for issue #14.
 
 Measures POST /api/v1/search end-to-end (retrieval + answer generation).
