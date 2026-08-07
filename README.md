@@ -327,6 +327,15 @@ Benchmark retrieval-augmented generation latency (requires server running):
 uv run python tests/test_latency.py
 ```
 
+**Cold vs warm Core AI (honest KPI #2):** see [`docs/latency_cold_warm.md`](docs/latency_cold_warm.md). Harness:
+
+```bash
+uv run python scripts/measure_cold_warm.py --n 10 --fail-on-p95-ms 2000   # extractive
+uv run python scripts/measure_cold_warm.py --n 10 --fail-on-p95-ms 5000   # ollama / Qwen
+```
+
+Do **not** claim &lt;300ms E2E with 7B generation; `test_latency.py` is retrieval-only.
+
 ### 4. Offline Evaluator CLI (`scripts/run.sh`)
 
 Run the hackathon evaluator contract against the local ChromaDB index:

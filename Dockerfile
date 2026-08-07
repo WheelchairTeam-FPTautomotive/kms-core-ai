@@ -62,9 +62,9 @@ USER root
 # Expose the Core AI service port.
 EXPOSE 8001
 
-# Health check aligned with the starter-kit pattern (30s interval).
+# Health check aligned with the starter-kit / compose probe (30s interval).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/v1/health')" || exit 1
 
 # Use the entrypoint to drop privileges after fixing runtime permissions.
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]

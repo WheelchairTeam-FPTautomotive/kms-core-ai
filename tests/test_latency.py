@@ -48,7 +48,8 @@ def test_solve_automotive_query_latency():
     print(f"Average Latency: {avg_latency:.2f} ms")
     print(f"Max Latency: {max_latency:.2f} ms")
 
-    # Assert response SLA requirement (< 250ms average & max under 300ms allowance for OS test harness jitter)
+    # Assert retrieval-path SLA only (Chroma/ONNX; expand mocked). NOT E2E LLM generation.
+    # Do not interpret this as <300ms Qwen/7B end-to-end (#14).
     assert avg_latency < 250.0, (
         f"Average latency ({avg_latency:.2f}ms) exceeded 250ms SLA!"
     )
