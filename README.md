@@ -2,6 +2,29 @@
 
 This is the Core AI RAG (Retrieval-Augmented Generation) Engine for the **Traceable Voice Copilot** project. It is managed by **Nguyen Minh Thuan (AI Lead)** and is responsible for ingesting manuals, managing vector indices, chunking token boundaries, correcting character spacing fragmentation, and serving low-latency grounded search answers.
 
+## Table of Contents
+
+- [Technical Stack](#technical-stack)
+- [Prerequisites](#prerequisites)
+- [Folder Structure](#folder-structure)
+- [Getting Started](#getting-started)
+  - [1. Install Dependencies](#1-install-dependencies)
+  - [2. Configure Environment](#2-configure-environment)
+  - [Unified answer generation (driver-facing)](#unified-answer-generation-driver-facing)
+  - [Relevance gate (anti-hallucination)](#relevance-gate-anti-hallucination)
+  - [Free-talk mode](#free-talk-mode)
+- [Ingestion & Vector Indexing Pipeline](#ingestion--vector-indexing-pipeline)
+  - [Reproducible Chroma ingest for the HACKATHON corpus](#reproducible-chroma-ingest-for-the-hackathon-corpus)
+- [Running the Core AI Server](#running-the-core-ai-server)
+- [Testing & Benchmarks](#testing--benchmarks)
+  - [1. Run All Tests](#1-run-all-tests)
+  - [2. Spacing Quality Gate Verification](#2-spacing-quality-gate-verification)
+  - [3. Latency SLA Benchmarking](#3-latency-sla-benchmarking)
+  - [4. Offline Evaluator CLI](#4-offline-evaluator-cli-scriptsrunsh)
+  - [5. Sprint 2 Golden Set (issue #9)](#5-sprint-2-golden-set-issue-9)
+- [REST API](#rest-api)
+- [Core REST Endpoints](#core-rest-endpoints)
+
 ---
 
 ## Technical Stack

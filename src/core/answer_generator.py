@@ -218,7 +218,11 @@ def generate_driver_answer(
 
 def generate_free_talk_answer(query: str, language: str | None = "vi") -> str:
     """Casual reply without RAG context; never invent vehicle procedures."""
-    from core.locale_messages import free_talk_no_llm, free_talk_system_prompt
+    from core.locale_messages import (
+        free_talk_llm_down,
+        free_talk_no_llm,
+        free_talk_system_prompt,
+    )
 
     provider = (settings.llm_provider or "none").strip().lower()
     if provider in {"", "none"}:
@@ -234,6 +238,11 @@ def generate_free_talk_answer(query: str, language: str | None = "vi") -> str:
         if answer and answer.strip():
             return answer.strip()
     except Exception as exc:
-        logger.warning("Free-talk generation failed (%s); using redirect", exc)
+        # --- START MODIFICATION ---
+        # Connection errors mean free_talk mode worked; Ollama is down — do not
+        # pretend the product is "manual-only".
+        logger.warning("Free-talk generation failed (%s); using LLM-down message", exc)
+        return free_talk_llm_down(language)
+        # --- END MODIFICATION ---
 
     return free_talk_no_llm(language)

@@ -37,6 +37,7 @@ FREE_TALK_SYSTEM_VI = (
     "Bạn là trợ lý giọng nói thân thiện trên xe. "
     "BẮT BUỘC trả lời CHỈ BẰNG TIẾNG VIỆT. "
     "Trả lời ngắn gọn, lịch sự, dễ đọc bằng TTS cho chào hỏi và trò chuyện chung. "
+    "Nếu người dùng xin kể chuyện cười / joke / trò chuyện vui, hãy đáp lại ngắn, vui vẻ (1–3 câu). "
     "KHÔNG bịa quy trình vận hành xe, thông số kỹ thuật, hay hướng dẫn từ manual. "
     "KHÔNG bịa số liệu thời tiết hay tin tức — nếu được hỏi thời tiết, nói bạn không có "
     "dữ liệu thời tiết trực tiếp và gợi ý hỏi câu tra cứu tài liệu xe. "
@@ -47,6 +48,7 @@ FREE_TALK_SYSTEM_EN = (
     "You are a friendly in-car voice assistant. "
     "You MUST answer ONLY IN ENGLISH. "
     "Keep replies short, polite, and TTS-friendly for greetings and small talk. "
+    "If the user asks for a joke or light story, give a short playful reply (1–3 sentences). "
     "Do NOT invent vehicle operating procedures, specs, or manual steps. "
     "Do NOT invent weather numbers or news — if asked about weather, say you have no "
     "live weather data and suggest a vehicle-manual style question instead. "
@@ -73,6 +75,18 @@ FREE_TALK_NO_LLM_EN = (
     "Hello! I work best with vehicle technical-document questions. "
     "Please ask in a manual-lookup style."
 )
+
+# --- START MODIFICATION ---
+# Used when free_talk mode is correct but the local LLM is unreachable.
+FREE_TALK_LLM_DOWN_VI = (
+    "Tôi nghe bạn rồi, nhưng trợ lý trò chuyện (Ollama) đang tắt hoặc chưa kết nối. "
+    "Hãy bật Ollama rồi hỏi lại, hoặc hỏi câu tra cứu manual xe."
+)
+FREE_TALK_LLM_DOWN_EN = (
+    "I heard you, but the chat LLM (Ollama) is offline or unreachable. "
+    "Start Ollama and ask again, or ask a vehicle-manual question."
+)
+# --- END MODIFICATION ---
 
 TIMEOUT_SOFT_VI = (
     "Xin lỗi, trợ lý đang khởi động chậm. Vui lòng hỏi lại sau vài giây."
@@ -115,6 +129,12 @@ def refused_answer(language: str | None) -> str:
 
 def free_talk_no_llm(language: str | None) -> str:
     return FREE_TALK_NO_LLM_EN if normalize_language(language) == "en" else FREE_TALK_NO_LLM_VI
+
+
+def free_talk_llm_down(language: str | None) -> str:
+    # --- START MODIFICATION ---
+    return FREE_TALK_LLM_DOWN_EN if normalize_language(language) == "en" else FREE_TALK_LLM_DOWN_VI
+    # --- END MODIFICATION ---
 
 
 def timeout_soft_answer(language: str | None) -> str:
