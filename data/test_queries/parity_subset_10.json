@@ -1,0 +1,124 @@
+[
+  {
+    "id": "rag-en-01",
+    "query": "What drive modes does the 2024 Ford Bronco owner manual describe?",
+    "language": "en",
+    "expected_status": "success",
+    "expected_doc_keywords": [
+      "Bronco",
+      "Ford"
+    ],
+    "category": "maintenance_rag",
+    "notes": "2024-ford-bronco.pdf"
+  },
+  {
+    "id": "rag-en-02",
+    "query": "VinFast VF8 first responder guide high voltage battery isolation after a crash",
+    "language": "en",
+    "expected_status": "success",
+    "expected_doc_keywords": [
+      "VINFAST",
+      "VF8"
+    ],
+    "category": "maintenance_rag",
+    "notes": "VINFAST_VF8_First_Responder_Guide.pdf"
+  },
+  {
+    "id": "rag-en-03",
+    "query": "Kia Seltos climate control system air filter replacement caution",
+    "language": "en",
+    "expected_status": "success",
+    "expected_doc_keywords": [
+      "seltos",
+      "Seltos"
+    ],
+    "category": "maintenance_rag",
+    "notes": "2027-seltos"
+  },
+  {
+    "id": "rag-en-04",
+    "query": "2024 Ford Bronco California Proposition 65 warning exhaust chemicals",
+    "language": "en",
+    "expected_status": "success",
+    "expected_doc_keywords": [
+      "Bronco",
+      "Ford"
+    ],
+    "category": "maintenance_rag",
+    "notes": "Bronco Prop 65"
+  },
+  {
+    "id": "rag-en-05",
+    "query": "2024 Ford Bronco owner manual continuous development change specifications",
+    "language": "en",
+    "expected_status": "success",
+    "expected_doc_keywords": [
+      "Bronco",
+      "Ford"
+    ],
+    "category": "maintenance_rag",
+    "notes": "Bronco rights/disclaimer section"
+  },
+  {
+    "id": "rag-en-06",
+    "query": "Hyundai Ioniq 5 high voltage battery 72.6 kWh and 350kW fast charging",
+    "language": "en",
+    "expected_status": "success",
+    "expected_doc_keywords": [
+      "Ioniq",
+      "Hyundai"
+    ],
+    "category": "maintenance_rag",
+    "notes": "Literal Ioniq guide"
+  },
+  {
+    "id": "rag-en-07",
+    "query": "Kia Seltos climate control air filter caution replace according to schedule",
+    "language": "en",
+    "expected_status": "success",
+    "expected_doc_keywords": [
+      "seltos",
+      "Seltos"
+    ],
+    "category": "maintenance_rag",
+    "notes": "Seltos climate filter"
+  },
+  {
+    "id": "rag-en-08",
+    "query": "VinFast VF8 first responder guide legal notice for trained responders only",
+    "language": "en",
+    "expected_status": "success",
+    "expected_doc_keywords": [
+      "VINFAST",
+      "VF8"
+    ],
+    "category": "maintenance_rag",
+    "notes": "VF8 legal notice section"
+  },
+  {
+    "id": "rag-en-09",
+    "query": "2023 Ford Bronco Sport owner manual servicing and maintaining warning",
+    "language": "en",
+    "expected_status": "success",
+    "expected_doc_keywords": [
+      "bronco",
+      "Bronco",
+      "Ford"
+    ],
+    "category": "maintenance_rag",
+    "notes": "2023-ford-bronco-sport.pdf"
+  },
+  {
+    "id": "rag-en-10",
+    "query": "2023 Ford Bronco Sport passenger vehicle off-road vehicle chemical exposure warning",
+    "language": "en",
+    "expected_status": "success",
+    "expected_doc_keywords": [
+      "bronco",
+      "Bronco",
+      "Ford"
+    ],
+    "category": "maintenance_rag",
+    "notes": "Bronco Sport warning"
+  }
+]
