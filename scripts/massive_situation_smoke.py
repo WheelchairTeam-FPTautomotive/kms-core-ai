@@ -788,7 +788,7 @@ def run_case(case: Case) -> dict[str, Any]:
             )
         # --- END MODIFICATION ---
         ms = int((time.perf_counter() - t0) * 1000)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return {
             "tag": case.tag,
             "bucket": case.bucket,
@@ -955,8 +955,8 @@ def main() -> int:
                     if body.get("status") == "ready" or body.get("retrieval_ready"):
                         print("  core health ready", flush=True)
                         return
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001
+                print(f"  core health probe retry: {exc}", flush=True)
             time.sleep(1.0)
         print("  WARN: core health not ready before timeout; continuing", flush=True)
 
@@ -1037,7 +1037,7 @@ def main() -> int:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"\nWrote {out}")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f"Could not write report: {exc}")
 
     fail_rate = 1 - (total_ok / max(1, len(results)))

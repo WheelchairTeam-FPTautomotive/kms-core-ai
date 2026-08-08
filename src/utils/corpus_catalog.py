@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from utils.logger import setup_logger
 from utils.vehicle_meta import build_chroma_where
@@ -25,7 +25,7 @@ def _distinct_document_names(
         kwargs["where"] = where
     try:
         batch = collection.get(**kwargs)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.warning(f"catalog get failed where={where}: {exc}")
         return []
     for meta in batch.get("metadatas") or []:

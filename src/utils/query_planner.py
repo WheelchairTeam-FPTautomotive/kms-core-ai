@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from core.config import settings
 from utils.logger import setup_logger
-from utils.vehicle_meta import canonical_model, _norm
+from utils.vehicle_meta import _norm, canonical_model
 
 logger = setup_logger("query_planner")
 
@@ -230,7 +231,7 @@ def plan_query(query: str, language: str | None = "vi") -> PlannedQuery:
     except FuturesTimeoutError:
         ms = int((time.perf_counter() - start) * 1000)
         logger.warning(f"[PLANNER] Timeout after {ms}ms (cap={timeout_s}s)")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         ms = int((time.perf_counter() - start) * 1000)
         logger.warning(f"[PLANNER] Failed in {ms}ms: {exc}")
 

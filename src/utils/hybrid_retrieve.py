@@ -33,9 +33,7 @@ def rrf_fuse(
             # Prefer payload with finite dense_distance
             prev_d = prev.get("dense_distance")
             new_d = payload.get("dense_distance")
-            if prev_d is None and new_d is not None:
-                payloads[key] = payload
-            elif (
+            if prev_d is None and new_d is not None or (
                 prev_d is not None
                 and new_d is not None
                 and float(new_d) < float(prev_d)

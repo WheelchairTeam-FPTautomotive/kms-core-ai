@@ -44,7 +44,7 @@ def warmup_ocr() -> None:
     try:
         _get_rapidocr()
         logger.info("RapidOCR weights ready")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.warning(f"RapidOCR warm-up skipped/failed: {exc}")
 
 
@@ -103,7 +103,7 @@ def extract_page_text(
 
     try:
         ocr_text = ocr_page_pymupdf(filepath, page_index0, dpi=ocr_dpi)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.warning(
             f"OCR failed for {filepath} page={page_number}: {exc}; "
             f"keeping pymupdf text"

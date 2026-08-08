@@ -258,10 +258,9 @@ def _gate_hybrid_candidates(
             dense_f = float(dense_d)
             if best_distance is None or dense_f < best_distance:
                 best_distance = dense_f
-            if dense_f > max_distance:
-                # Dense weak: allow if CE strongly prefers it
-                if ce is None or float(ce) < ce_min:
-                    continue
+            # Dense weak: allow if CE strongly prefers it
+            if dense_f > max_distance and (ce is None or float(ce) < ce_min):
+                continue
         else:
             # BM25-only: require lexical rank + CE (when available)
             if bm25_rank is not None and int(bm25_rank) > bm25_max_rank:
@@ -401,9 +400,12 @@ def _citations_match_vehicle(
             hay = name_c
             if any(p in hay or (len(p) >= 4 and hay in p) for p in pins):
                 return True
-            if model_compact and len(model_compact) >= 4:
-                if model_compact in name_c or name_c in model_compact:
-                    return True
+            if (
+                model_compact
+                and len(model_compact) >= 4
+                and (model_compact in name_c or name_c in model_compact)
+            ):
+                return True
         return False
         # --- END MODIFICATION ---
 

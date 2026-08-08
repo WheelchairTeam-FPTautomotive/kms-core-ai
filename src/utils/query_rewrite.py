@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 
 from core.config import settings
 from utils.logger import setup_logger
@@ -151,7 +152,7 @@ def rewrite_retrieval_query(query: str, language: str | None = "vi") -> str | No
         rewrite_ms = int((time.perf_counter() - start) * 1000)
         logger.warning(f"[RAG] Rewrite timeout after {rewrite_ms}ms (cap={timeout_s}s)")
         return None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         rewrite_ms = int((time.perf_counter() - start) * 1000)
         logger.warning(f"[RAG] Rewrite failed in {rewrite_ms}ms: {exc}")
         return None

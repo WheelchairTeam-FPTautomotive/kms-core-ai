@@ -18,7 +18,7 @@ logger = setup_logger("bm25_index")
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
 _LOCK = threading.RLock()
-_CACHE: "Bm25Sidecar | None" = None
+_CACHE: Bm25Sidecar | None = None
 
 
 def bm25_index_dir() -> Path:
@@ -95,10 +95,13 @@ class Bm25Sidecar:
             if score <= 0:
                 break
             meta = self.metas[idx] or {}
-            if make_n and str(meta.get("make") or "").strip().lower() != make_n:
-                # allow make miss when model substring already pins the vehicle
-                if not model_compact:
-                    continue
+            # allow make miss when model substring already pins the vehicle
+            if (
+                make_n
+                and str(meta.get("make") or "").strip().lower() != make_n
+                and not model_compact
+            ):
+                continue
             if model_compact:
                 from utils.vehicle_meta import model_match_pins
 
@@ -169,13 +172,10 @@ def build_sidecar_from_rows(
             "trim": row.get("trim") or "",
         }
         # --- START MODIFICATION ---
-        try:
-            from utils.vehicle_meta import dedupe_meta_value
+        from utils.vehicle_meta import dedupe_meta_value
 
-            meta["make"] = dedupe_meta_value(str(meta["make"]))
-            meta["model"] = dedupe_meta_value(str(meta["model"]))
-        except Exception:  # noqa: BLE001
-            pass
+        meta["make"] = dedupe_meta_value(str(meta["make"]))
+        meta["model"] = dedupe_meta_value(str(meta["model"]))
         # --- END MODIFICATION ---
         toks = tokenize(text)
         if not toks:

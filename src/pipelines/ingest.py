@@ -611,7 +611,7 @@ def run_ingestion(
         from utils.bm25_index import rebuild_from_chroma
 
         rebuild_from_chroma(collection)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("BM25 sidecar rebuild after ingest failed: %s", exc)
     # --- END MODIFICATION ---
 
