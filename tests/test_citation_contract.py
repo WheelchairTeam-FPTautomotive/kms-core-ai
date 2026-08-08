@@ -162,7 +162,7 @@ def test_live_success_keeps_required_fields(
 def test_ungrounded_success_path_clears_citations(
     mock_plan, mock_expand, mock_merge, mock_get_collection, mock_generate
 ):
-    """Honesty gate: soft-deny must not return success with ghost citations."""
+    """Honesty gate: soft-deny with retrieved snippets → extractive (cites kept)."""
     mock_expand.return_value = ["teleporter on Bronco"]
     mock_merge.return_value = [
         ("hash999", "Bronco.pdf", "Intro", 1, "Bronco overview", 0.4)
@@ -174,7 +174,18 @@ def test_ungrounded_success_path_clears_citations(
         "No matching information was found in the technical documents."
     )
 
-    result = solve_automotive_query_live("teleporter on Bronco", language="en")
-    assert result["status"] == "not_found"
-    assert result["citations"] == []
+    # Isolate from live BM25/CE so mocked dense hits drive the honesty path
+    with (
+        patch("core.config.settings.rag_hybrid_enabled", False),
+        patch("core.config.settings.rag_rerank_enabled", False),
+    ):
+        result = solve_automotive_query_live("teleporter on Bronco", language="en")
+    # --- START MODIFICATION ---
+    # Soft-deny no longer returns not_found when snippets exist: extractive summary
+    # keeps citations so the driver still sees grounded evidence.
+    assert result["status"] == "success"
+    assert result.get("handoff") is False
+    assert len(result.get("citations") or []) >= 1
+    assert result["citations"][0]["document_name"] == "Bronco.pdf"
+    # --- END MODIFICATION ---
 # --- END MODIFICATION ---

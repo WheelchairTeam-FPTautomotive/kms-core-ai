@@ -163,7 +163,10 @@ def _fallback_plan(query: str) -> PlannedQuery:
     from utils.vehicle_meta import KNOWN_MAKES, MODEL_ALIASES, parse_vehicle_metadata
 
     folded = fold_vi(query)
-    meta = parse_vehicle_metadata("unknown.pdf", doc_name=query)
+    # --- START MODIFICATION ---
+    # Do not use a fake "unknown.pdf" path — it pollutes model with "unknown …"
+    meta = parse_vehicle_metadata("query.txt", doc_name=query)
+    # --- END MODIFICATION ---
     # Also scan query text via filename-style parser
     make, model, year = meta["make"], meta["model"], meta["year"]
     # Lightweight vehicle sniff from known aliases in query
@@ -181,6 +184,13 @@ def _fallback_plan(query: str) -> PlannedQuery:
     y = re.search(r"\b((?:19|20)\d{2})\b", folded)
     if y:
         year = y.group(1)
+
+    # Drop polluted heuristic models (e.g. "unknown thong" from VI filler tokens)
+    model_n = _norm(model)
+    if model_n.startswith("unknown") or model_n in {"thong", "he", "lam", "huong", "quy"}:
+        model = ""
+    if make == "unknown":
+        make = ""
 
     if _CATALOG_FALLBACK.search(folded):
         intent: Intent = "catalog"

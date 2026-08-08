@@ -91,6 +91,16 @@ _NOISE = {
     "system",
     "trading",
     "central",
+    "unknown",
+    "query",
+    "he",
+    "thong",
+    "lam",
+    "sao",
+    "huong",
+    "dan",
+    "quy",
+    "trinh",
 }
 
 
