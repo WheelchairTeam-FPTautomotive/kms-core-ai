@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Massive mixed-intent situation smoke: RAG, FREE_TALK, CAR_CONTROL + OOB.
 
 - RAG / FREE_TALK → Core AI :8001 (default)

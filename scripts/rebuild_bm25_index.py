@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Rebuild BM25 sidecar from the live Chroma collection (no PDF re-ingest)."""
 
 from __future__ import annotations
