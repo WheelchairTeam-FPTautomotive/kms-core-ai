@@ -161,11 +161,13 @@ def hybrid_retrieve_candidates(
 
     dense_ranked = dense_hits_to_ranked(dense_raw)
     bm25_lists: list[list[tuple[str, dict[str, Any]]]] = []
-    # Cap BM25 query fan-out for latency (planner EN + original is enough)
-    for q in queries[:2]:
+    # --- START MODIFICATION ---
+    # Fan-in 4 so prepended OEM EN phrases are not dropped (RC3)
+    for q in queries[:4]:
         bm25_lists.append(
             bm25_hits_to_ranked(q, top_k=btop, make=make, model=model, year=year)
         )
+    # --- END MODIFICATION ---
 
     lists = [dense_ranked, *bm25_lists]
     fused = rrf_fuse(lists, k=k, limit=limit)

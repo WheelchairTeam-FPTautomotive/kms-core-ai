@@ -381,21 +381,31 @@ def _citations_match_vehicle(
     compact = "".join(ch for ch in blob if ch.isalnum())
 
     if model_n:
+        # --- START MODIFICATION ---
+        # Trim/title pins: bronco raptor / raptor ↔ bronco document names
+        from utils.vehicle_meta import model_match_pins
+
+        pins = model_match_pins(model_n)
+        if any(p in compact for p in pins if len(p) >= 4):
+            return True
         model_compact = "".join(ch for ch in fold_vi(model_n) if ch.isalnum())
         if model_compact and model_compact in compact:
             return True
         tokens = [t for t in fold_vi(model_n).split() if t]
         if tokens and all(t in blob for t in tokens):
             return True
-        # substring either way (santa fe ↔ santafesport)
         for c in citations:
             name_c = "".join(
                 ch for ch in fold_vi(str(c.get("document_name") or "")) if ch.isalnum()
             )
+            hay = name_c
+            if any(p in hay or (len(p) >= 4 and hay in p) for p in pins):
+                return True
             if model_compact and len(model_compact) >= 4:
                 if model_compact in name_c or name_c in model_compact:
                     return True
         return False
+        # --- END MODIFICATION ---
 
     if make_n:
         return fold_vi(make_n) in blob
@@ -448,6 +458,23 @@ def solve_automotive_query_live(
 
     try:
         planned = plan_query(query, language=language)
+
+        # --- START MODIFICATION ---
+        # Normalize trim aliases (bronco raptor / raptor → bronco) for Chroma where
+        from dataclasses import replace
+
+        from utils.vehicle_meta import normalize_query_vehicle
+
+        _n_make, _n_model = normalize_query_vehicle(planned.make, planned.model)
+        if (_n_make and _n_make != (planned.make or "")) or (
+            _n_model and _n_model != (planned.model or "")
+        ):
+            planned = replace(
+                planned,
+                make=_n_make or planned.make,
+                model=_n_model or planned.model,
+            )
+        # --- END MODIFICATION ---
 
         # --- START MODIFICATION ---
         # Catalog: metadata inventory (not vector similarity)

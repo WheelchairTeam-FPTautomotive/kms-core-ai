@@ -100,6 +100,9 @@ class Bm25Sidecar:
                 if not model_compact:
                     continue
             if model_compact:
+                from utils.vehicle_meta import model_match_pins
+
+                pins = model_match_pins(model_n) or {model_compact}
                 meta_model = str(meta.get("model") or "").strip().lower()
                 meta_compact = "".join(ch for ch in meta_model if ch.isalnum())
                 name_compact = "".join(
@@ -107,10 +110,16 @@ class Bm25Sidecar:
                     for ch in str(meta.get("document_name") or "").lower()
                     if ch.isalnum()
                 )
-                if (
-                    model_compact not in meta_compact
-                    and meta_compact not in model_compact
-                    and model_compact not in name_compact
+                trim_compact = "".join(
+                    ch
+                    for ch in str(meta.get("trim") or "").lower()
+                    if ch.isalnum()
+                )
+                hay = meta_compact + name_compact + trim_compact
+                if not any(
+                    p in hay or p in meta_compact or meta_compact in p
+                    for p in pins
+                    if len(p) >= 3
                 ):
                     continue
             if year_n and str(meta.get("year") or "").strip().lower() != year_n:
@@ -157,7 +166,17 @@ def build_sidecar_from_rows(
             "model": row.get("model") or "",
             "year": row.get("year") or "",
             "document_id": row.get("document_id") or "",
+            "trim": row.get("trim") or "",
         }
+        # --- START MODIFICATION ---
+        try:
+            from utils.vehicle_meta import dedupe_meta_value
+
+            meta["make"] = dedupe_meta_value(str(meta["make"]))
+            meta["model"] = dedupe_meta_value(str(meta["model"]))
+        except Exception:  # noqa: BLE001
+            pass
+        # --- END MODIFICATION ---
         toks = tokenize(text)
         if not toks:
             continue

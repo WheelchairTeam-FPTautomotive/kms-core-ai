@@ -34,6 +34,11 @@ _MODEL_ALIASES: dict[str, str] = {
     "ioniq 5": "ioniq 5",
     "ranger raptor": "ranger raptor",
     "rangerraptor": "ranger raptor",
+    # Bronco Raptor trim → parent Bronco (keep ranger raptor distinct)
+    "bronco raptor": "bronco",
+    "broncoraptor": "bronco",
+    "raptor": "bronco",
+    "bronco": "bronco",
 }
 
 _MODEL_DEFAULT_MAKE: dict[str, str] = {
@@ -44,6 +49,13 @@ _MODEL_DEFAULT_MAKE: dict[str, str] = {
     "ioniq 5": "hyundai",
     "camry": "toyota",
     "ranger raptor": "ford",
+    "bronco": "ford",
+}
+
+# Extra match tokens for trim/title matching (beyond canonical model)
+_MODEL_MATCH_EXTRAS: dict[str, tuple[str, ...]] = {
+    "bronco": ("raptor",),
+    "ranger raptor": ("raptor", "ranger"),
 }
 
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
@@ -101,18 +113,72 @@ def canonical_model(raw: str) -> str:
     if _is_hash_token(_fold_compact(folded)):
         return ""
     compact = _fold_compact(raw)
+    # Prefer longer alias keys first (bronco raptor before raptor)
+    spaced = fold_vi(raw).replace("_", " ").replace("-", " ")
+    spaced = re.sub(r"\s+", " ", spaced).strip()
+    for key in sorted(_MODEL_ALIASES.keys(), key=len, reverse=True):
+        key_c = _fold_compact(key)
+        if folded == key or compact == key_c or spaced == key:
+            return _MODEL_ALIASES[key]
+        if key_c and key_c in compact and len(key_c) >= 6:
+            return _MODEL_ALIASES[key]
     if folded in _MODEL_ALIASES:
         return _MODEL_ALIASES[folded]
     if compact in _MODEL_ALIASES:
         return _MODEL_ALIASES[compact]
-    # "santa_fe" / "Santa-Fe"
-    spaced = fold_vi(raw).replace("_", " ").replace("-", " ")
-    spaced = re.sub(r"\s+", " ", spaced).strip()
     if spaced in _MODEL_ALIASES:
         return _MODEL_ALIASES[spaced]
     if _is_hash_token(_fold_compact(spaced)):
         return ""
     return spaced
+
+
+def dedupe_meta_value(value: str | None) -> str:
+    """Collapse duplicated tokens: 'bronco bronco' → 'bronco'."""
+    # --- START MODIFICATION ---
+    parts = [p for p in _norm(value).split() if p]
+    if not parts:
+        return ""
+    out: list[str] = []
+    for p in parts:
+        if not out or out[-1] != p:
+            out.append(p)
+    return " ".join(out)
+    # --- END MODIFICATION ---
+
+
+def model_match_pins(model: str | None) -> set[str]:
+    """
+    Compact strings that count as a vehicle match for BM25/cite filters.
+    Includes canonical model + trim extras (e.g. bronco + raptor).
+    """
+    # --- START MODIFICATION ---
+    raw = _norm(model)
+    if not raw:
+        return set()
+    canon = canonical_model(raw) or raw
+    pins = {_fold_compact(raw), _fold_compact(canon)}
+    for extra in _MODEL_MATCH_EXTRAS.get(canon, ()):
+        pins.add(_fold_compact(extra))
+    # Bare "raptor" (non-ranger) also pins bronco
+    if "raptor" in pins and "ranger" not in _fold_compact(raw):
+        pins.add("bronco")
+    return {p for p in pins if p and len(p) >= 3}
+    # --- END MODIFICATION ---
+
+
+def normalize_query_vehicle(
+    make: str | None, model: str | None
+) -> tuple[str, str]:
+    """Normalize planner make/model for Chroma where (canonical model)."""
+    # --- START MODIFICATION ---
+    mo = canonical_model(model or "") if (model or "").strip() else ""
+    mo = dedupe_meta_value(mo)
+    mk = _norm(make)
+    if mo and not mk:
+        mk = _MODEL_DEFAULT_MAKE.get(mo, "")
+    return mk, mo
+    # --- END MODIFICATION ---
 
 
 KNOWN_MAKES = _KNOWN_MAKES
@@ -225,6 +291,13 @@ def parse_vehicle_metadata(filepath: Path | str, doc_name: str = "") -> dict[str
     # Final hash guard
     if _is_hash_token(_fold_compact(model)):
         model = ""
+
+    # --- START MODIFICATION ---
+    make = dedupe_meta_value(make)
+    model = dedupe_meta_value(canonical_model(model) if model else "")
+    if model and not make:
+        make = _MODEL_DEFAULT_MAKE.get(model, "")
+    # --- END MODIFICATION ---
 
     return {
         "make": _norm(make),

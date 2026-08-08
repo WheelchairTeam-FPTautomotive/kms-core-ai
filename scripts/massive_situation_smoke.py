@@ -942,6 +942,51 @@ def main() -> int:
     if USE_GATEWAY:
         label = f"{label}+GATEWAY"
     print(f"Running {len(cases)} situations ({label})…")
+
+    # --- START MODIFICATION ---
+    # RC1: wait for Core ready, then discard one warm RAG so scoring is steady-state
+    def _wait_core_ready(timeout_s: float = 120.0) -> None:
+        health = "http://127.0.0.1:8001/api/v1/health"
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            try:
+                with urllib.request.urlopen(health, timeout=5) as resp:
+                    body = json.loads(resp.read().decode("utf-8"))
+                    if body.get("status") == "ready" or body.get("retrieval_ready"):
+                        print("  core health ready", flush=True)
+                        return
+            except Exception:
+                pass
+            time.sleep(1.0)
+        print("  WARN: core health not ready before timeout; continuing", flush=True)
+
+    def _discard_warmup() -> None:
+        warm_q = "seatbelt pretensioner how does it work"
+        try:
+            if USE_GATEWAY:
+                _post(
+                    GATEWAY,
+                    {
+                        "text": warm_q,
+                        "language": "en",
+                        "context": {"vehicle_id": "smoke-warm", "session_id": "warm"},
+                    },
+                    timeout=180,
+                )
+            else:
+                _post(
+                    CORE,
+                    {"query": warm_q, "mode": "rag", "language": "en"},
+                    timeout=180,
+                )
+            print("  discard warmup RAG done", flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print(f"  WARN: warmup discard failed: {exc}", flush=True)
+
+    _wait_core_ready()
+    _discard_warmup()
+    # --- END MODIFICATION ---
+
     results = []
     for i, case in enumerate(cases, 1):
         print(f"[{i}/{len(cases)}] {case.tag} …", flush=True)
