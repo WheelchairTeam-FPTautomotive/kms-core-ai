@@ -219,6 +219,7 @@ __marimo__/
 
 # KMS Core AI — Project specific
 data/chroma_db/
+data/bm25_index/
 outputs/
 output/
 output/*.json

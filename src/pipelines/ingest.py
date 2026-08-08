@@ -5,12 +5,12 @@ import os
 import re
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
 import chromadb
 from chromadb.utils import embedding_functions
-from pypdf import PdfReader
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -19,6 +19,46 @@ from pipelines.chunker import ChunkingConfig, TextChunk, chunk_text
 from utils.logger import setup_logger
 
 logger = setup_logger("kms_pdf_ingest")
+
+
+def _default_ingest_workers() -> int:
+    """Bounded CPU process count — OCR is RAM-heavy; avoid oversubscription."""
+    cpu = os.cpu_count() or 1
+    return max(1, min(4, cpu))
+
+
+def _process_pdf_worker(
+    filepath: str,
+    doc_id: str,
+    doc_name: str,
+    window: int,
+    overlap: int,
+) -> dict[str, Any]:
+    """
+    Top-level worker for ProcessPoolExecutor (must be picklable on Windows spawn).
+
+    Returns serializable chunk payloads; Chroma upsert stays in the parent process.
+    """
+    # --- START MODIFICATION ---
+    config = ChunkingConfig(window=window, overlap=overlap)
+    chunks = process_pdf_file(Path(filepath), doc_id, doc_name, config)
+    payload = [
+        {
+            "text": c.text,
+            "chunk_index": c.chunk_index,
+            "page": c.page,
+            "metadata": c.metadata,
+        }
+        for c in chunks
+    ]
+    return {
+        "filepath": filepath,
+        "doc_id": doc_id,
+        "doc_name": doc_name,
+        "chunks": payload,
+        "n_chunks": len(payload),
+    }
+    # --- END MODIFICATION ---
 
 
 # Load english words list
@@ -210,12 +250,25 @@ def process_pdf_file(
     doc_name: str,
     config: ChunkingConfig,
 ) -> list[TextChunk]:
-    """Parse a single PDF file page-by-page and chunk text."""
+    """Parse a single PDF file page-by-page and chunk text (PyMuPDF + OCR fallback)."""
+    # --- START MODIFICATION ---
+    from pipelines.pdf_extract import extract_page_text, pdf_page_count
+
     chunks: list[TextChunk] = []
+    ocr_on_thin = bool(getattr(settings, "pdf_ocr_on_thin_page", True))
+    ocr_dpi = int(getattr(settings, "pdf_ocr_dpi", 200))
     try:
-        reader = PdfReader(str(filepath))
-        for page_idx, page in enumerate(reader.pages, start=1):
-            text = page.extract_text() or ""
+        n_pages = pdf_page_count(str(filepath))
+        ocr_pages = 0
+        for page_idx in range(1, n_pages + 1):
+            text, method = extract_page_text(
+                str(filepath),
+                page_idx,
+                ocr_on_thin=ocr_on_thin,
+                ocr_dpi=ocr_dpi,
+            )
+            if method == "ocr":
+                ocr_pages += 1
             text = clean_pdf_text(text)
             if not text.strip():
                 continue
@@ -229,14 +282,30 @@ def process_pdf_file(
                 config=config,
             )
 
+            # --- START MODIFICATION ---
+            # Path-derived vehicle fields — always str (never None) for Chroma
+            from utils.vehicle_meta import parse_vehicle_metadata
+
+            vehicle = parse_vehicle_metadata(filepath, doc_name=doc_name)
             for chunk in page_chunks:
                 chunk.metadata["section"] = section
+                chunk.metadata["extract_method"] = method
+                chunk.metadata["make"] = vehicle["make"]
+                chunk.metadata["model"] = vehicle["model"]
+                chunk.metadata["year"] = vehicle["year"]
                 chunks.append(chunk)
+            # --- END MODIFICATION ---
+
+        if ocr_pages:
+            logger.info(
+                f"OCR used on {ocr_pages}/{n_pages} pages for '{filepath.name}'"
+            )
 
     except Exception as e:
         logger.error(f"Error parsing PDF '{filepath.name}': {e}")
 
     return chunks
+    # --- END MODIFICATION ---
 
 
 def get_chroma_collection(reset: bool = False) -> chromadb.Collection:
@@ -274,15 +343,138 @@ def get_chroma_collection(reset: bool = False) -> chromadb.Collection:
     return collection
 
 
+def _path_matches_globs(path: Path, globs: list[str] | None) -> bool:
+    if not globs:
+        return True
+    # Match against both POSIX-style relative-ish and name
+    as_posix = path.as_posix()
+    name = path.name
+    for pattern in globs:
+        if path.match(pattern) or Path(as_posix).match(pattern):
+            return True
+        # fnmatch on full posix path for **/Accent/2020/**
+        import fnmatch
+
+        if fnmatch.fnmatch(as_posix, pattern) or fnmatch.fnmatch(name, pattern):
+            return True
+    return False
+
+
+def evict_documents_from_chroma(
+    collection: chromadb.Collection,
+    doc_names: set[str],
+    doc_ids: set[str],
+) -> int:
+    """Delete all Chroma vectors for the given document_name / document_id set."""
+    # --- START MODIFICATION ---
+    if not doc_names and not doc_ids:
+        return 0
+    deleted = 0
+    # Chroma where $in for document_name
+    try:
+        if doc_names:
+            names = sorted(doc_names)
+            # batch $in to avoid oversized filters
+            for i in range(0, len(names), 50):
+                batch = names[i : i + 50]
+                existing = collection.get(
+                    where={"document_name": {"$in": batch}},
+                    include=[],
+                )
+                ids = existing.get("ids") or []
+                if ids:
+                    collection.delete(ids=ids)
+                    deleted += len(ids)
+    except Exception as exc:
+        logger.warning(f"Eviction by document_name failed: {exc}")
+
+    # Also evict by document_id metadata when present
+    try:
+        if doc_ids:
+            ids_list = sorted(doc_ids)
+            for i in range(0, len(ids_list), 50):
+                batch = ids_list[i : i + 50]
+                existing = collection.get(
+                    where={"document_id": {"$in": batch}},
+                    include=[],
+                )
+                ids = existing.get("ids") or []
+                if ids:
+                    collection.delete(ids=ids)
+                    deleted += len(ids)
+    except Exception as exc:
+        logger.warning(f"Eviction by document_id failed: {exc}")
+
+    logger.info(f"Evicted {deleted} existing Chroma ids before re-ingest")
+    return deleted
+    # --- END MODIFICATION ---
+
+
+def _flush_upsert_batch(
+    collection: chromadb.Collection,
+    batch_ids: list[str],
+    batch_documents: list[str],
+    batch_metadatas: list[dict[str, Any]],
+) -> None:
+    if not batch_ids:
+        return
+    collection.upsert(
+        ids=batch_ids,
+        documents=batch_documents,
+        metadatas=batch_metadatas,
+    )
+    batch_ids.clear()
+    batch_documents.clear()
+    batch_metadatas.clear()
+
+
+def _append_chunk_payloads(
+    *,
+    doc_id: str,
+    chunk_payloads: list[dict[str, Any]],
+    batch_ids: list[str],
+    batch_documents: list[str],
+    batch_metadatas: list[dict[str, Any]],
+    batch_size: int,
+    collection: chromadb.Collection,
+) -> int:
+    """Queue serializable worker chunks into Chroma upsert batches (parent only)."""
+    added = 0
+    for chunk in chunk_payloads:
+        chunk_unique_id = f"{doc_id}_p{chunk['page']}_c{chunk['chunk_index']}"
+        batch_ids.append(chunk_unique_id)
+        batch_documents.append(chunk["text"])
+        batch_metadatas.append(chunk["metadata"])
+        added += 1
+        if len(batch_ids) >= batch_size:
+            _flush_upsert_batch(
+                collection, batch_ids, batch_documents, batch_metadatas
+            )
+    return added
+
+
 def run_ingestion(
     pdf_dir: str | Path = settings.docs_pdf_dir,
     corpus_dir: str | Path = settings.docs_corpus_dir,
     reset: bool = False,
     batch_size: int = 200,
+    only_globs: list[str] | None = None,
+    workers: int | None = None,
 ) -> int:
     """Run full PDF ingestion pipeline across docs_corpus and docs_pdf."""
+    # --- START MODIFICATION ---
+    # Parallel PDF extract/OCR via process pool; single-threaded Chroma upsert.
     start_time = time.time()
     logger.info("Starting Automotive PDF Manual Ingestion Pipeline...")
+
+    worker_count = workers if workers is not None else _default_ingest_workers()
+    worker_count = max(1, int(worker_count))
+
+    # Pre-warm RapidOCR when thin-page OCR is enabled (avoid mid-run download stall)
+    if bool(getattr(settings, "pdf_ocr_on_thin_page", True)):
+        from pipelines.pdf_extract import warmup_ocr
+
+        warmup_ocr()
 
     hash_to_name = load_document_mapping(corpus_dir)
     chunk_config = ChunkingConfig(
@@ -295,8 +487,9 @@ def run_ingestion(
     # 1. Gather files from docs_corpus (recursive — HACKATHON uses category subfolders)
     corpus_path = Path(corpus_dir)
     if corpus_path.exists():
-        # --- START MODIFICATION ---
         for pdf_file in corpus_path.rglob("*.pdf"):
+            if not _path_matches_globs(pdf_file, only_globs):
+                continue
             doc_id = pdf_file.stem
             mapped = hash_to_name.get(doc_id)
             # Prefer mapping title; else basename only (never nested path)
@@ -304,14 +497,14 @@ def run_ingestion(
             if not doc_name.endswith(".pdf"):
                 doc_name = f"{doc_name}.pdf"
             pdf_files.append((pdf_file, doc_id, doc_name))
-        # --- END MODIFICATION ---
 
     # 2. Gather additional files from docs_pdf (recursive)
     pdf_path = Path(pdf_dir)
     processed_hashes = {doc_id for _, doc_id, _ in pdf_files}
     if pdf_path.exists():
-        # --- START MODIFICATION ---
         for pdf_file in pdf_path.rglob("*.pdf"):
+            if not _path_matches_globs(pdf_file, only_globs):
+                continue
             doc_name = pdf_file.name  # basename only
             doc_id = calculate_file_hash(pdf_file)
             if doc_id not in processed_hashes:
@@ -321,55 +514,109 @@ def run_ingestion(
                     doc_name = mapped if mapped.endswith(".pdf") else f"{mapped}.pdf"
                 pdf_files.append((pdf_file, doc_id, doc_name))
                 processed_hashes.add(doc_id)
-        # --- END MODIFICATION ---
 
     logger.info(f"Found {len(pdf_files)} target PDF documents to process.")
+    logger.info(f"Ingest workers: {worker_count}")
+    if only_globs:
+        logger.info(f"only_globs={only_globs}")
 
     collection = get_chroma_collection(reset=reset)
+
+    # Targeted re-ingest: purge all prior vectors for these docs (OCR changes chunk counts)
+    if only_globs and pdf_files and not reset:
+        evict_documents_from_chroma(
+            collection,
+            doc_names={name for _, _, name in pdf_files},
+            doc_ids={doc_id for _, doc_id, _ in pdf_files},
+        )
 
     total_chunks = 0
     batch_ids: list[str] = []
     batch_documents: list[str] = []
     batch_metadatas: list[dict[str, Any]] = []
+    n_files = len(pdf_files)
 
-    for file_idx, (pdf_file, doc_id, doc_name) in enumerate(pdf_files, start=1):
-        chunks = process_pdf_file(pdf_file, doc_id, doc_name, chunk_config)
-        logger.info(
-            f"[{file_idx}/{len(pdf_files)}] Processed '{pdf_file.name}' -> {len(chunks)} chunks"
-        )
-
-        for chunk in chunks:
-            chunk_unique_id = f"{doc_id}_p{chunk.page}_c{chunk.chunk_index}"
-            batch_ids.append(chunk_unique_id)
-            batch_documents.append(chunk.text)
-            batch_metadatas.append(chunk.metadata)
-            total_chunks += 1
-
-            if len(batch_ids) >= batch_size:
-                collection.upsert(
-                    ids=batch_ids,
-                    documents=batch_documents,
-                    metadatas=batch_metadatas,
+    if worker_count == 1 or n_files <= 1:
+        for file_idx, (pdf_file, doc_id, doc_name) in enumerate(pdf_files, start=1):
+            chunks = process_pdf_file(pdf_file, doc_id, doc_name, chunk_config)
+            logger.info(
+                f"[{file_idx}/{n_files}] Processed '{pdf_file.name}' -> {len(chunks)} chunks"
+            )
+            payloads = [
+                {
+                    "text": c.text,
+                    "chunk_index": c.chunk_index,
+                    "page": c.page,
+                    "metadata": c.metadata,
+                }
+                for c in chunks
+            ]
+            total_chunks += _append_chunk_payloads(
+                doc_id=doc_id,
+                chunk_payloads=payloads,
+                batch_ids=batch_ids,
+                batch_documents=batch_documents,
+                batch_metadatas=batch_metadatas,
+                batch_size=batch_size,
+                collection=collection,
+            )
+    else:
+        # ProcessPool: extract/OCR in workers; upsert serially in parent (Chroma-safe).
+        done = 0
+        with ProcessPoolExecutor(max_workers=worker_count) as pool:
+            futures = {
+                pool.submit(
+                    _process_pdf_worker,
+                    str(pdf_file),
+                    doc_id,
+                    doc_name,
+                    chunk_config.window,
+                    chunk_config.overlap,
+                ): pdf_file.name
+                for pdf_file, doc_id, doc_name in pdf_files
+            }
+            for fut in as_completed(futures):
+                name = futures[fut]
+                done += 1
+                try:
+                    result = fut.result()
+                except Exception as exc:
+                    logger.error(f"[{done}/{n_files}] Worker failed '{name}': {exc}")
+                    continue
+                logger.info(
+                    f"[{done}/{n_files}] Processed '{Path(result['filepath']).name}' "
+                    f"-> {result['n_chunks']} chunks"
                 )
-                batch_ids.clear()
-                batch_documents.clear()
-                batch_metadatas.clear()
+                total_chunks += _append_chunk_payloads(
+                    doc_id=result["doc_id"],
+                    chunk_payloads=result["chunks"],
+                    batch_ids=batch_ids,
+                    batch_documents=batch_documents,
+                    batch_metadatas=batch_metadatas,
+                    batch_size=batch_size,
+                    collection=collection,
+                )
 
-    # Upsert remaining batch
-    if batch_ids:
-        collection.upsert(
-            ids=batch_ids,
-            documents=batch_documents,
-            metadatas=batch_metadatas,
-        )
+    _flush_upsert_batch(collection, batch_ids, batch_documents, batch_metadatas)
 
     elapsed = time.time() - start_time
     logger.info("=== Ingestion Complete ===")
     logger.info(f"Processed Documents: {len(pdf_files)}")
     logger.info(f"Total Chunks Stored: {total_chunks}")
+    logger.info(f"Workers Used: {worker_count}")
     logger.info(f"Time Taken: {elapsed:.2f} seconds")
 
+    # --- START MODIFICATION ---
+    try:
+        from utils.bm25_index import rebuild_from_chroma
+
+        rebuild_from_chroma(collection)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("BM25 sidecar rebuild after ingest failed: %s", exc)
+    # --- END MODIFICATION ---
+
     return total_chunks
+    # --- END MODIFICATION ---
 
 
 def run_ingestion_opensearch(
@@ -458,10 +705,32 @@ if __name__ == "__main__":
     parser.add_argument("--reset", action="store_true", help="Reset ChromaDB collection before ingestion")
     parser.add_argument("--batch-size", type=int, default=200, help="Batch size for ChromaDB upsert")
     parser.add_argument("--target", type=str, default="chroma", choices=["chroma", "opensearch"], help="Vector database target engine")
+    parser.add_argument(
+        "--only-glob",
+        action="append",
+        default=None,
+        help="Limit ingest to paths matching this glob (repeatable). Example: **/Accent/2020/**",
+    )
+    # --- START MODIFICATION ---
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help=(
+            "Parallel PDF extract/OCR processes (Chroma upsert stays single-threaded). "
+            f"Default: min(4, CPU count) = {_default_ingest_workers()}. Use 1 for serial."
+        ),
+    )
+    # --- END MODIFICATION ---
     args = parser.parse_args()
 
     if args.target == "opensearch" or settings.vector_db_type == "opensearch":
         run_ingestion_opensearch(batch_size=args.batch_size)
     else:
-        run_ingestion(reset=args.reset, batch_size=args.batch_size)
+        run_ingestion(
+            reset=args.reset,
+            batch_size=args.batch_size,
+            only_globs=args.only_glob,
+            workers=args.workers,
+        )
 

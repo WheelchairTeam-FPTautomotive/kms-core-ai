@@ -43,6 +43,27 @@ class Settings(BaseSettings):
     rag_top_k: int = 3
     rag_context_chars: int = 2400
     rag_max_distance: float = 1.15
+    # --- START MODIFICATION ---
+    # Conditional LLM rewrite when first-pass distance gate keeps 0 hits
+    rag_rewrite_on_miss: bool = True
+    rag_rewrite_timeout_s: float = 4.0
+    # Dynamic query planner (catalog vs procedure + vehicle entities)
+    rag_planner_enabled: bool = True
+    rag_planner_timeout_s: float = 4.0
+    # Hybrid BM25 + dense RRF + local cross-encoder rerank
+    rag_hybrid_enabled: bool = True
+    rag_rrf_k: int = 60
+    rag_candidate_pool: int = 12
+    rag_bm25_top_k: int = 20
+    bm25_index_path: str = "data/bm25_index"
+    rag_rerank_enabled: bool = True
+    rag_rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    rag_ce_min_score: float = -2.0
+    rag_bm25_only_max_rank: int = 15
+    # Hybrid PDF extract: PyMuPDF first; RapidOCR only on thin/junk pages
+    pdf_ocr_on_thin_page: bool = True
+    pdf_ocr_dpi: int = 200
+    # --- END MODIFICATION ---
     free_talk_system_prompt: str = (
         "Bạn là trợ lý giọng nói thân thiện trên xe. "
         "Trả lời ngắn gọn, lịch sự, dễ đọc bằng TTS cho chào hỏi và trò chuyện chung. "

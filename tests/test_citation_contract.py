@@ -13,10 +13,23 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from pipelines.solve_problem import solve_automotive_query_live
+from utils.query_planner import PlannedQuery
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN = ROOT / "data" / "test_queries" / "golden_set_s2.json"
 REQUIRED_CITATION_FIELDS = ("document_id", "document_name", "page", "matched_text")
+
+
+def _procedure_plan(query: str, language: str | None = "vi") -> PlannedQuery:
+    _ = language
+    return PlannedQuery(
+        intent="procedure",
+        make="",
+        model="",
+        year="",
+        search_query=query,
+        source="fallback",
+    )
 
 
 def _load_golden_success_cases() -> list[dict]:
@@ -51,7 +64,9 @@ def assert_citation_contract(result: dict) -> None:
 @patch("pipelines.solve_problem.get_chroma_collection")
 @patch("pipelines.solve_problem._merge_multi_query_hits")
 @patch("pipelines.solve_problem.expand_retrieval_queries")
+@patch("utils.query_planner.plan_query", side_effect=_procedure_plan)
 def test_golden_success_citation_contract_mocked(
+    mock_plan,
     mock_expand,
     mock_merge,
     mock_get_collection,
@@ -117,8 +132,9 @@ def test_nested_path_document_name_fails_contract_helper():
 @patch("pipelines.solve_problem.get_chroma_collection")
 @patch("pipelines.solve_problem._merge_multi_query_hits")
 @patch("pipelines.solve_problem.expand_retrieval_queries")
+@patch("utils.query_planner.plan_query", side_effect=_procedure_plan)
 def test_live_success_keeps_required_fields(
-    mock_expand, mock_merge, mock_get_collection, mock_generate
+    mock_plan, mock_expand, mock_merge, mock_get_collection, mock_generate
 ):
     mock_expand.return_value = ["How does HVAC work?"]
     mock_merge.return_value = [
@@ -142,8 +158,9 @@ def test_live_success_keeps_required_fields(
 @patch("pipelines.solve_problem.get_chroma_collection")
 @patch("pipelines.solve_problem._merge_multi_query_hits")
 @patch("pipelines.solve_problem.expand_retrieval_queries")
+@patch("utils.query_planner.plan_query", side_effect=_procedure_plan)
 def test_ungrounded_success_path_clears_citations(
-    mock_expand, mock_merge, mock_get_collection, mock_generate
+    mock_plan, mock_expand, mock_merge, mock_get_collection, mock_generate
 ):
     """Honesty gate: soft-deny must not return success with ghost citations."""
     mock_expand.return_value = ["teleporter on Bronco"]

@@ -21,6 +21,22 @@ _DOMAIN_ALIASES: dict[str, list[str]] = {
     ],
 }
 
+# --- START MODIFICATION ---
+# OEM / procedure synonyms for hybrid BM25 (ISOFIX, MIST, VI defrost, seat memory)
+_OEM_SYNONYMS: tuple[tuple[str, list[str]], ...] = (
+    ("isofix", ["latch", "child restraint anchor", "lower anchors"]),
+    ("latch", ["isofix", "child restraint"]),
+    ("mist", ["single wipe", "wiper mist", "single wiping cycle"]),
+    ("say kinh", ["defrost", "rear defroster", "rear window defroster"]),
+    ("say kinh sau", ["rear defrost", "rear window defroster"]),
+    ("nho ghe", ["driver position memory", "power seat memory", "seat memory"]),
+    ("washer fluid", ["washer reservoir", "windshield washer"]),
+    ("nuoc rua kinh", ["washer fluid", "washer reservoir"]),
+    ("wheel nut", ["lug nut torque", "wheel lug nut", "nut torque"]),
+    ("torque", ["wheel nut torque", "lug nut"]),
+)
+# --- END MODIFICATION ---
+
 _MAX_VARIANTS = 5
 
 # Matched against fold_vi(query)
@@ -67,6 +83,7 @@ def expand_retrieval_queries(query: str) -> list[str]:
     """
     Build up to 5 retrieval variants. Original query is always first.
     Expansions are for vector lookup only — answer generation keeps the original.
+    Cross-lingual how-to rescue is handled by conditional LLM rewrite on gate miss.
     """
     # --- START MODIFICATION ---
     original = (query or "").strip()
@@ -99,6 +116,13 @@ def expand_retrieval_queries(query: str) -> list[str]:
         for alias in _DOMAIN_ALIASES.get(topic, []):
             _add(alias)
             _add(f"What is {alias}")
+
+    # --- START MODIFICATION ---
+    for needle, aliases in _OEM_SYNONYMS:
+        if needle in folded:
+            for alias in aliases:
+                _add(alias)
+    # --- END MODIFICATION ---
 
     return variants
     # --- END MODIFICATION ---

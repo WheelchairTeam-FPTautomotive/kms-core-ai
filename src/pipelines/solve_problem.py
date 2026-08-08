@@ -140,14 +140,17 @@ def get_chroma_collection():
     return _COLLECTION_CACHE
 
 
-@functools.lru_cache(maxsize=1024)
-def _cached_vector_query(query: str, top_k: int = 3) -> tuple:
+@functools.lru_cache(maxsize=2048)
+def _cached_vector_query(query: str, top_k: int = 3, where_json: str = "") -> tuple:
     collection = get_chroma_collection()
-    results = collection.query(
-        query_texts=[query],
-        n_results=top_k,
-        include=["documents", "metadatas", "distances"],
-    )
+    kwargs: dict[str, Any] = {
+        "query_texts": [query],
+        "n_results": top_k,
+        "include": ["documents", "metadatas", "distances"],
+    }
+    if where_json:
+        kwargs["where"] = json.loads(where_json)
+    results = collection.query(**kwargs)
 
     docs = results.get("documents", [[]])[0]
     metas = results.get("metadatas", [[]])[0]
@@ -160,7 +163,7 @@ def _cached_vector_query(query: str, top_k: int = 3) -> tuple:
                 meta.get("document_id", ""),
                 meta.get("document_name", "Automotive Manual"),
                 meta.get("section", f"Trang {meta.get('page', 1)}"),
-                int(meta.get("page", 1)),
+                int(meta.get("page", 1) or 0),
                 doc[:300],
                 float(distance),
             )
@@ -174,15 +177,24 @@ NOT_FOUND_ANSWER = (
 )
 
 
-def _merge_multi_query_hits(queries: list[str], top_k: int) -> list[tuple]:
+def _merge_multi_query_hits(
+    queries: list[str],
+    top_k: int,
+    where: dict | None = None,
+) -> list[tuple]:
     """
     Run cached Chroma lookups for each retrieval variant; keep best distance per chunk.
     --- START MODIFICATION ---
     """
+    where_json = json.dumps(where, sort_keys=True) if where else ""
     best_by_key: dict[tuple, tuple] = {}
     for q in queries:
-        for hit in _cached_vector_query(q, top_k=top_k):
-            # MODIFIED: unused fields prefixed for Ruff RUF059
+        try:
+            hits = _cached_vector_query(q, top_k=top_k, where_json=where_json)
+        except Exception as exc:
+            logger.warning(f"Chroma query failed where={where}: {exc}")
+            continue
+        for hit in hits:
             doc_id, _doc_name, _section, page, text_snippet, distance = hit
             key = (doc_id, page, text_snippet[:80])
             prev = best_by_key.get(key)
@@ -193,11 +205,233 @@ def _merge_multi_query_hits(queries: list[str], top_k: int) -> list[tuple]:
     # --- END MODIFICATION ---
 
 
+def _gate_hits(
+    raw_citations: list[tuple],
+    max_distance: float,
+) -> tuple[list[dict[str, Any]], list[str], float | None]:
+    citations: list[dict[str, Any]] = []
+    snippets: list[str] = []
+    best_distance = None
+    for idx, (doc_id, doc_name, section, page, text_snippet, distance) in enumerate(
+        raw_citations, start=1
+    ):
+        if best_distance is None or distance < best_distance:
+            best_distance = distance
+        if distance > max_distance:
+            continue
+        citations.append(
+            {
+                "document_id": doc_id,
+                "document_name": doc_name,
+                "section": section,
+                "page": page,
+                "matched_text": text_snippet,
+            }
+        )
+        snippets.append(
+            f"{idx}. [{doc_name} - {section} (Trang {page})]: {text_snippet}"
+        )
+    return citations, snippets, best_distance
+
+
+def _gate_hybrid_candidates(
+    candidates: list[dict[str, Any]],
+    max_distance: float,
+) -> tuple[list[dict[str, Any]], list[str], float | None]:
+    """
+    Gate fused candidates using preserved dense_distance and/or CE/BM25 policy.
+    Never treat rrf_score as a distance.
+    """
+    # --- START MODIFICATION ---
+    ce_min = float(getattr(settings, "rag_ce_min_score", -2.0))
+    bm25_max_rank = int(getattr(settings, "rag_bm25_only_max_rank", 15) or 15)
+    citations: list[dict[str, Any]] = []
+    snippets: list[str] = []
+    best_distance = None
+
+    for cand in candidates:
+        dense_d = cand.get("dense_distance")
+        ce = cand.get("ce_score")
+        bm25_rank = cand.get("bm25_rank")
+
+        if dense_d is not None:
+            dense_f = float(dense_d)
+            if best_distance is None or dense_f < best_distance:
+                best_distance = dense_f
+            if dense_f > max_distance:
+                # Dense weak: allow if CE strongly prefers it
+                if ce is None or float(ce) < ce_min:
+                    continue
+        else:
+            # BM25-only: require lexical rank + CE (when available)
+            if bm25_rank is not None and int(bm25_rank) > bm25_max_rank:
+                continue
+            if ce is not None and float(ce) < ce_min:
+                continue
+
+        citations.append(
+            {
+                "document_id": str(cand.get("document_id") or ""),
+                "document_name": str(cand.get("document_name") or "Automotive Manual"),
+                "section": str(cand.get("section") or ""),
+                "page": int(cand.get("page") or 0),
+                "matched_text": str(cand.get("matched_text") or "")[:300],
+            }
+        )
+
+    for idx, c in enumerate(citations, start=1):
+        snippets.append(
+            f"{idx}. [{c['document_name']} - {c['section']} (Trang {c['page']})]: "
+            f"{c['matched_text']}"
+        )
+    return citations, snippets, best_distance
+    # --- END MODIFICATION ---
+
+
+def _cascading_retrieve(
+    queries: list[str],
+    top_k: int,
+    max_distance: float,
+    make: str,
+    model: str,
+    year: str,
+    *,
+    primary_query: str | None = None,
+) -> tuple[list[dict[str, Any]], list[str], float | None, dict | None]:
+    """
+    Procedure retrieval cascade with hybrid BM25+dense RRF + CE rerank:
+    make+model+year → make+model → make → unfiltered.
+    """
+    from utils.hybrid_retrieve import hybrid_retrieve_candidates
+    from utils.rerank import rerank_candidates
+    from utils.vehicle_meta import build_chroma_where
+
+    attempts: list[tuple[dict | None, str, str, str]] = []
+    seen: set[str] = set()
+
+    def _add(where: dict | None, fm: str, fmo: str, fy: str) -> None:
+        key = f"{json.dumps(where, sort_keys=True) if where else 'null'}|{fm}|{fmo}|{fy}"
+        if key in seen:
+            return
+        seen.add(key)
+        attempts.append((where, fm, fmo, fy))
+
+    if make or model or year:
+        _add(build_chroma_where(make, model, year), make, model, year)
+    if year and (make or model):
+        _add(build_chroma_where(make, model, None), make, model, "")
+    if make and model:
+        _add(build_chroma_where(make, model, None), make, model, "")
+    if model:
+        _add(build_chroma_where(None, model, None), "", model, "")
+    if make:
+        _add(build_chroma_where(make, None, None), make, "", "")
+    _add(None, "", "", "")
+
+    last_best = None
+    pq = primary_query or (queries[0] if queries else "")
+    for where, fm, fmo, fy in attempts:
+        raw = _merge_multi_query_hits(queries, top_k=max(top_k, 8), where=where)
+        candidates = hybrid_retrieve_candidates(
+            queries,
+            raw,
+            make=fm,
+            model=fmo,
+            year=fy,
+        )
+        candidates = rerank_candidates(pq, candidates, top_k=max(top_k, 8))
+        citations, snippets, best_distance = _gate_hybrid_candidates(
+            candidates, max_distance
+        )
+        # Trim to top_k after gate
+        citations = citations[:top_k]
+        snippets = snippets[:top_k]
+        last_best = best_distance if best_distance is not None else last_best
+        logger.info(
+            f"RAG cascade where={where} best_distance={best_distance} "
+            f"kept={len(snippets)}/{len(candidates)} hybrid=1"
+        )
+        if snippets:
+            return citations, snippets, best_distance, where
+    return [], [], last_best, None
+
+
+def _citations_match_vehicle(
+    citations: list[dict[str, Any]],
+    make: str,
+    model: str,
+) -> bool:
+    """
+    Citation honesty: when planner pinned a vehicle, at least one cite name
+    must mention that model (preferred) or make. Empty vehicle → always ok.
+    """
+    # --- START MODIFICATION ---
+    from utils.query_expand import fold_vi
+
+    make_n = (make or "").strip().lower()
+    model_n = (model or "").strip().lower()
+    if not make_n and not model_n:
+        return True
+    if not citations:
+        return False
+
+    blob = fold_vi(
+        " ".join(str(c.get("document_name") or "") for c in citations)
+    )
+    compact = "".join(ch for ch in blob if ch.isalnum())
+
+    if model_n:
+        model_compact = "".join(ch for ch in fold_vi(model_n) if ch.isalnum())
+        if model_compact and model_compact in compact:
+            return True
+        tokens = [t for t in fold_vi(model_n).split() if t]
+        if tokens and all(t in blob for t in tokens):
+            return True
+        # substring either way (santa fe ↔ santafesport)
+        for c in citations:
+            name_c = "".join(
+                ch for ch in fold_vi(str(c.get("document_name") or "")) if ch.isalnum()
+            )
+            if model_compact and len(model_compact) >= 4:
+                if model_compact in name_c or name_c in model_compact:
+                    return True
+        return False
+
+    if make_n:
+        return fold_vi(make_n) in blob
+    return True
+    # --- END MODIFICATION ---
+
+
+def _rag_miss_handoff(
+    query: str, language: str | None, reason: str
+) -> Dict[str, Any]:
+    """Constrained FREE_TALK after RAG miss / ungrounded / cite-vehicle mismatch."""
+    # --- START MODIFICATION ---
+    from core.answer_generator import generate_rag_miss_handoff
+
+    answer = generate_rag_miss_handoff(query, language=language)
+    logger.info(f"RAG soft-handoff reason={reason} query={query!r}")
+    return {
+        "query": query,
+        "answer": answer,
+        "citations": [],
+        "status": "success",
+        "handoff": True,
+    }
+    # --- END MODIFICATION ---
+
+
 def solve_automotive_query_live(
     query: str, language: str | None = "vi"
 ) -> Dict[str, Any]:
-    """Live ChromaDB vector retrieval solver with distance relevance gate."""
-    from core.locale_messages import not_found_answer
+    """Live ChromaDB vector retrieval solver with planner routing + distance gate."""
+    from utils.corpus_catalog import (
+        catalog_citations,
+        format_catalog_answer,
+        list_documents_for_vehicle,
+    )
+    from utils.query_planner import plan_query
 
     start_time = time.time()
     logger.info(f"Live RAG processing query: '{query}' language={language}")
@@ -209,79 +443,164 @@ def solve_automotive_query_live(
             "answer": refusal_reason,
             "citations": [],
             "status": "refused",
+            "handoff": False,
         }
 
     try:
+        planned = plan_query(query, language=language)
+
+        # --- START MODIFICATION ---
+        # Catalog: metadata inventory (not vector similarity)
+        if planned.intent == "catalog":
+            names = list_documents_for_vehicle(
+                get_chroma_collection,
+                make=planned.make,
+                model=planned.model,
+                year=planned.year,
+            )
+            elapsed_ms = (time.time() - start_time) * 1000
+            if not names:
+                logger.info(
+                    f"Catalog empty→handoff in {elapsed_ms:.2f}ms "
+                    f"source={planned.source}"
+                )
+                return _rag_miss_handoff(query, language, reason="catalog_empty")
+            answer = format_catalog_answer(
+                names,
+                language=language,
+                make=planned.make,
+                model=planned.model,
+                year=planned.year,
+            )
+            logger.info(
+                f"Catalog answer in {elapsed_ms:.2f}ms docs={len(names)} "
+                f"source={planned.source}"
+            )
+            return {
+                "query": query,
+                "answer": answer,
+                "citations": catalog_citations(names),
+                "status": "success",
+                "handoff": False,
+            }
+
+        if planned.intent == "chitchat":
+            from core.answer_generator import generate_free_talk_answer
+
+            return {
+                "query": query,
+                "answer": generate_free_talk_answer(query, language=language),
+                "citations": [],
+                "status": "success",
+                "handoff": False,
+            }
+
+        if planned.intent == "refuse":
+            from core.locale_messages import refused_answer
+
+            return {
+                "query": query,
+                "answer": refused_answer(language),
+                "citations": [],
+                "status": "refused",
+                "handoff": False,
+            }
+
         top_k = getattr(settings, "rag_top_k", 3) or 3
         max_distance = float(getattr(settings, "rag_max_distance", 1.15))
-        # --- START MODIFICATION ---
-        # Tone-free VI / cross-lingual: expand for retrieval only; answer uses original query
         retrieval_queries = expand_retrieval_queries(query)
+        # Prefer planner English search phrase first for embedding
+        if planned.search_query and planned.search_query not in retrieval_queries:
+            retrieval_queries = [planned.search_query, *retrieval_queries]
         logger.info(f"RAG retrieval_queries={retrieval_queries}")
-        raw_citations = _merge_multi_query_hits(retrieval_queries, top_k=top_k)
-        # --- END MODIFICATION ---
-        citations = []
-        snippets = []
-        best_distance = None
 
-        for idx, (doc_id, doc_name, section, page, text_snippet, distance) in enumerate(
-            raw_citations, start=1
-        ):
-            if best_distance is None or distance < best_distance:
-                best_distance = distance
-            # --- START MODIFICATION ---
-            # Relevance gate: drop weak neighbors above RAG_MAX_DISTANCE
-            if distance > max_distance:
-                continue
-            # --- END MODIFICATION ---
-            citations.append(
-                {
-                    "document_id": doc_id,
-                    "document_name": doc_name,
-                    "section": section,
-                    "page": page,
-                    "matched_text": text_snippet,
-                }
-            )
-            snippets.append(
-                f"{idx}. [{doc_name} - {section} (Trang {page})]: {text_snippet}"
-            )
-
+        citations, snippets, best_distance, used_where = _cascading_retrieve(
+            retrieval_queries,
+            top_k=top_k,
+            max_distance=max_distance,
+            make=planned.make,
+            model=planned.model,
+            year=planned.year,
+            primary_query=query,
+        )
         space = (get_chroma_collection().metadata or {}).get("hnsw:space", "l2")
         logger.info(
             f"RAG gate space={space} best_distance={best_distance} "
-            f"max={max_distance} kept={len(snippets)}/{len(raw_citations)}"
+            f"max={max_distance} kept={len(snippets)} where={used_where}"
         )
+
+        # Conditional LLM rewrite when cascade keeps 0
+        if not snippets:
+            from utils.query_rewrite import rewrite_enabled, rewrite_retrieval_query
+
+            if rewrite_enabled():
+                logger.info(
+                    "[RAG] Cascade kept=0. Triggering LLM query rewrite..."
+                )
+                rewritten = rewrite_retrieval_query(query, language=language)
+                if rewritten:
+                    citations, snippets, best_distance, used_where = _cascading_retrieve(
+                        [rewritten],
+                        top_k=top_k,
+                        max_distance=max_distance,
+                        make=planned.make,
+                        model=planned.model,
+                        year=planned.year,
+                        primary_query=query,
+                    )
+                    if snippets:
+                        logger.info(
+                            f"[RAG] Rewrite pass best_distance={best_distance} "
+                            f"kept={len(snippets)} where={used_where}. SUCCESS."
+                        )
+                    else:
+                        logger.info(
+                            f"[RAG] Rewrite pass best_distance={best_distance} "
+                            f"kept=0. SECOND_PASS_EMPTY."
+                        )
+                else:
+                    logger.info("[RAG] REWRITE_MISS — falling through to handoff")
+            else:
+                logger.info(
+                    "[RAG] Cascade kept=0; rewrite disabled or LLM_PROVIDER=none"
+                )
 
         if not snippets:
             elapsed_ms = (time.time() - start_time) * 1000
-            logger.info(f"Live RAG not_found in {elapsed_ms:.2f}ms (weak/no hits)")
-            return {
-                "query": query,
-                "answer": not_found_answer(language),
-                "citations": [],
-                "status": "not_found",
-            }
+            logger.info(f"Live RAG miss→handoff in {elapsed_ms:.2f}ms (weak/no hits)")
+            return _rag_miss_handoff(query, language, reason="no_hits")
 
-        from core.answer_generator import generate_driver_answer
+        # Citation honesty: pinned vehicle must appear in cite names
+        if not _citations_match_vehicle(citations, planned.make, planned.model):
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.info(
+                f"Live RAG cite-vehicle mismatch→handoff in {elapsed_ms:.2f}ms "
+                f"make={planned.make!r} model={planned.model!r} "
+                f"cites={[c.get('document_name') for c in citations]}"
+            )
+            return _rag_miss_handoff(query, language, reason="cite_vehicle_mismatch")
+
+        from core.answer_generator import extractive_summary, generate_driver_answer
         from core.grounding import is_ungrounded, parse_grounded_answer
 
-        # --- START MODIFICATION ---
-        # Citation honesty: ungrounded soft-deny → not_found + empty cites (no ghost cards)
+        # Citation honesty: LLM soft-deny with retrieved evidence → extractive
+        # (keep cites). Only hand off when there is nothing grounded to quote.
         raw_answer = generate_driver_answer(query, snippets, language=language)
         answer, grounded_flag = parse_grounded_answer(raw_answer)
         if is_ungrounded(answer, grounded_flag):
             elapsed_ms = (time.time() - start_time) * 1000
-            logger.info(
-                f"Live RAG ungrounded→not_found in {elapsed_ms:.2f}ms "
-                f"(flag={grounded_flag}, dropped_cites={len(citations)})"
-            )
-            return {
-                "query": query,
-                "answer": not_found_answer(language),
-                "citations": [],
-                "status": "not_found",
-            }
+            if snippets:
+                logger.info(
+                    f"Live RAG ungrounded→extractive in {elapsed_ms:.2f}ms "
+                    f"(flag={grounded_flag}, cites={len(citations)})"
+                )
+                answer = extractive_summary(snippets, language=language)
+            else:
+                logger.info(
+                    f"Live RAG ungrounded→handoff in {elapsed_ms:.2f}ms "
+                    f"(flag={grounded_flag}, dropped_cites={len(citations)})"
+                )
+                return _rag_miss_handoff(query, language, reason="ungrounded")
         # --- END MODIFICATION ---
 
         elapsed_ms = (time.time() - start_time) * 1000
@@ -294,6 +613,7 @@ def solve_automotive_query_live(
             "answer": answer,
             "citations": citations,
             "status": "success",
+            "handoff": False,
         }
 
     except Exception as e:
@@ -303,6 +623,7 @@ def solve_automotive_query_live(
             "answer": f"Đã xảy ra lỗi trong quá trình tra cứu dữ liệu: {e!s}",
             "citations": [],
             "status": "error",
+            "handoff": False,
         }
 
 
@@ -316,6 +637,7 @@ def solve_free_talk_query(query: str, language: str | None = "vi") -> Dict[str, 
         "answer": answer,
         "citations": [],
         "status": "success",
+        "handoff": False,
     }
 
 

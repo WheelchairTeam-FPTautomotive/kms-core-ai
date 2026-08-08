@@ -218,15 +218,32 @@ Collection metadata records `hnsw:space=l2`. After a future cosine re-index (`in
 
 ## Ingestion & Vector Indexing Pipeline
 
-Before running queries, populate the vector database with the parsed automotive manuals:
+Before running queries, populate the vector database with the parsed automotive manuals.
+
+PDF pages use **PyMuPDF** first; thin/junk pages (image-heavy GSGs) escalate to **RapidOCR @ 200 DPI** at ingest only (no query-time OCR).
 
 ```bash
 # Ingest PDF manuals into Local ChromaDB (Option A)
 uv run python src/pipelines/ingest.py --target chroma
 
+# Targeted re-ingest (evicts prior vectors for matched docs, then re-inserts)
+uv run python src/pipelines/ingest.py --only-glob "**/Accent/2020/**"
+
+# Parallel PDF extract/OCR (default workers = min(4, CPU); Chroma upsert stays serial)
+uv run python src/pipelines/ingest.py --target chroma --reset --workers 4
+uv run python src/pipelines/ingest.py --only-glob "**/Accent/2020/**" --workers 2
+# --workers 1 forces the previous serial path
+
+# Pre-warm RapidOCR ONNX weights (CI / offline)
+uv run python scripts/warmup_ocr.py
+
 # Ingest PDF manuals into Amazon OpenSearch Serverless (Option B)
 uv run python src/pipelines/ingest.py --target opensearch
 ```
+
+Env: `PDF_OCR_ON_THIN_PAGE=true`, `PDF_OCR_DPI=200`.
+
+Query routing uses a **dynamic planner** (`RAG_PLANNER_ENABLED`) that classifies catalog vs procedure and extracts `make`/`model`/`year`. Chunks store those fields at ingest for Chroma `where` filters. Timeouts: `RAG_PLANNER_TIMEOUT_S=4`, `RAG_REWRITE_TIMEOUT_S=4`.
 
 To clear existing collections and re-index everything from scratch:
 

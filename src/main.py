@@ -37,11 +37,34 @@ def _warm_llm_background() -> None:
         logger.warning("LLM warm-up skipped/failed: %s", exc)
 
 
+def _warm_retrieval_background() -> None:
+    """Load BM25 sidecar + cross-encoder so first RAG query is not cold."""
+    # --- START MODIFICATION ---
+    try:
+        from utils.bm25_index import get_bm25_sidecar
+
+        sc = get_bm25_sidecar()
+        logger.info(
+            "BM25 warm-up %s",
+            f"n_chunks={len(sc)}" if sc is not None else "missing",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("BM25 warm-up skipped/failed: %s", exc)
+    try:
+        from utils.rerank import warm_cross_encoder
+
+        warm_cross_encoder()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Cross-encoder warm-up skipped/failed: %s", exc)
+    # --- END MODIFICATION ---
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     import threading
 
     threading.Thread(target=_warm_llm_background, daemon=True).start()
+    threading.Thread(target=_warm_retrieval_background, daemon=True).start()
     yield
 
 
@@ -80,6 +103,10 @@ class SearchResponse(BaseModel):
     answer: str
     citations: list[CitationInfo]
     status: str
+    # --- START MODIFICATION ---
+    # Soft RAG→FT handoff telemetry (constrained free-talk; never invent procedures)
+    handoff: bool = False
+    # --- END MODIFICATION ---
 
 
 @app.get("/health")

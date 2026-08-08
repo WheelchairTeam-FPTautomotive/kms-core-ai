@@ -88,6 +88,34 @@ FREE_TALK_LLM_DOWN_EN = (
 )
 # --- END MODIFICATION ---
 
+# --- START MODIFICATION ---
+# Soft handoff after RAG miss: acknowledge gap, clarify — never invent procedures.
+RAG_MISS_HANDOFF_VI = (
+    "Bạn là trợ lý giọng nói trên xe. Người dùng vừa hỏi về tài liệu/xe "
+    "nhưng chỉ mục manual không có đủ bằng chứng. "
+    "BẮT BUỘC trả lời CHỈ BẰNG TIẾNG VIỆT, ngắn, TTS-friendly. "
+    "Thừa nhận chưa tìm thấy trong tài liệu, gợi ý hỏi lại rõ model/năm/chủ đề. "
+    "TUYỆT ĐỐI KHÔNG bịa quy trình, nút bấm, thông số, hay bước thao tác."
+)
+RAG_MISS_HANDOFF_EN = (
+    "You are an in-car voice assistant. The driver asked a manual/vehicle question "
+    "but the indexed manuals lack sufficient evidence. "
+    "You MUST answer ONLY IN ENGLISH, short and TTS-friendly. "
+    "Acknowledge that nothing matching was found in the documents and invite a "
+    "clearer model/year/topic follow-up. "
+    "NEVER invent procedures, button sequences, specs, or operating steps."
+)
+
+RAG_MISS_HANDOFF_FALLBACK_VI = (
+    "Tôi chưa tìm thấy nội dung phù hợp trong tài liệu kỹ thuật đang có. "
+    "Bạn thử nêu rõ model, năm, và thao tác cần hỏi nhé."
+)
+RAG_MISS_HANDOFF_FALLBACK_EN = (
+    "I could not find matching information in the available technical documents. "
+    "Please specify the model, year, and the procedure you need."
+)
+# --- END MODIFICATION ---
+
 TIMEOUT_SOFT_VI = (
     "Xin lỗi, trợ lý đang khởi động chậm. Vui lòng hỏi lại sau vài giây."
 )
@@ -117,6 +145,26 @@ def rag_system_prompt(language: str | None) -> str:
 
 def free_talk_system_prompt(language: str | None) -> str:
     return FREE_TALK_SYSTEM_EN if normalize_language(language) == "en" else FREE_TALK_SYSTEM_VI
+
+
+def rag_miss_handoff_system_prompt(language: str | None) -> str:
+    # --- START MODIFICATION ---
+    return (
+        RAG_MISS_HANDOFF_EN
+        if normalize_language(language) == "en"
+        else RAG_MISS_HANDOFF_VI
+    )
+    # --- END MODIFICATION ---
+
+
+def rag_miss_handoff_fallback(language: str | None) -> str:
+    # --- START MODIFICATION ---
+    return (
+        RAG_MISS_HANDOFF_FALLBACK_EN
+        if normalize_language(language) == "en"
+        else RAG_MISS_HANDOFF_FALLBACK_VI
+    )
+    # --- END MODIFICATION ---
 
 
 def not_found_answer(language: str | None) -> str:

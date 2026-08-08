@@ -246,3 +246,36 @@ def generate_free_talk_answer(query: str, language: str | None = "vi") -> str:
         # --- END MODIFICATION ---
 
     return free_talk_no_llm(language)
+
+
+def generate_rag_miss_handoff(query: str, language: str | None = "vi") -> str:
+    """
+    Constrained free-talk after RAG miss / ungrounded / cite-vehicle mismatch.
+    Must never invent manual procedures.
+    """
+    # --- START MODIFICATION ---
+    from core.locale_messages import (
+        free_talk_llm_down,
+        rag_miss_handoff_fallback,
+        rag_miss_handoff_system_prompt,
+    )
+
+    provider = (settings.llm_provider or "none").strip().lower()
+    if provider in {"", "none"}:
+        return rag_miss_handoff_fallback(language)
+
+    generator = get_answer_generator(
+        provider=provider,
+        system_prompt=rag_miss_handoff_system_prompt(language),
+        language=language,
+    )
+    try:
+        answer = generator.generate(query, [])
+        if answer and answer.strip():
+            return answer.strip()
+    except Exception as exc:
+        logger.warning("RAG-miss handoff generation failed (%s)", exc)
+        return free_talk_llm_down(language)
+
+    return rag_miss_handoff_fallback(language)
+    # --- END MODIFICATION ---
