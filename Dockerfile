@@ -53,7 +53,8 @@ COPY scripts/ ./scripts/
 # Runtime directories for vector DB, logs, and evaluator outputs.
 RUN mkdir -p /app/data /app/logs /app/outputs && \
     chown -R appuser:appuser /app && \
-    chmod +x /app/scripts/entrypoint.sh
+    chmod +x /app/scripts/entrypoint.sh && \
+    sed -i 's/\r$//' /app/scripts/entrypoint.sh
 
 # The container starts as root so the entrypoint can fix bind-mount ownership,
 # then it drops to appuser before running the application.
