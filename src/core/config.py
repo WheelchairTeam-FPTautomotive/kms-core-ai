@@ -19,17 +19,18 @@ class Settings(BaseSettings):
 
     use_local_embedding: bool = True
     embedding_model: str = "text-embedding-3-small"
-    aws_region: str = "ap-southeast-1" # Singapore, ap-southeast-2 = Sydney
+    # MODIFIED: lock region + Nemotron default (override via .env; verify id in console)
+    aws_region: str = "ap-southeast-2"
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     aws_session_token: str = ""
     opensearch_endpoint: str = ""
     opensearch_index: str = "automotive-manuals"
-    bedrock_model_id: str = "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+    bedrock_model_id: str = "nvidia.nemotron-super-3-120b"
     bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
-    vector_db_type: str = "chroma"  # 'chroma' or 'opensearch'
+    vector_db_type: str = "chroma"  # 'chroma' or 'opensearch' (AOSS deferred)
 
-    llm_provider: str = "none"  # none | bedrock | openai_compatible
+    llm_provider: str = "bedrock"  # none | bedrock | openai_compatible | ollama
     system_prompt: str = (
         "Bạn là trợ lý giọng nói trên xe hơi cho tài xế. "
         "Trả lời ngắn gọn, rõ ràng, dễ đọc bằng TTS, DỰA HOÀN TOÀN VÀO ngữ cảnh tài liệu được cung cấp. "
