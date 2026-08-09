@@ -32,6 +32,7 @@ _MODEL_ALIASES: dict[str, str] = {
     "santa fe": "santa fe",
     "ioniq5": "ioniq 5",
     "ioniq 5": "ioniq 5",
+    "tucson": "tucson",
     "ranger raptor": "ranger raptor",
     "rangerraptor": "ranger raptor",
     # Bronco Raptor trim → parent Bronco (keep ranger raptor distinct)
@@ -57,6 +58,9 @@ _MODEL_MATCH_EXTRAS: dict[str, tuple[str, ...]] = {
     "bronco": ("raptor",),
     "ranger raptor": ("raptor", "ranger"),
 }
+
+# Warm-time corpus model→make (from BM25 sidecar metas). Static table wins on conflict.
+_CORPUS_MODEL_MAKE: dict[str, str] = {}
 
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
@@ -177,16 +181,65 @@ def model_match_pins(model: str | None) -> set[str]:
     # --- END MODIFICATION ---
 
 
+def set_corpus_model_make_map(mapping: dict[str, str] | None) -> None:
+    """Replace warm-time corpus model→make map (empty clears)."""
+    # --- START MODIFICATION ---
+    global _CORPUS_MODEL_MAKE
+    _CORPUS_MODEL_MAKE = {
+        dedupe_meta_value(canonical_model(k) or k): _norm(v)
+        for k, v in (mapping or {}).items()
+        if (k or "").strip() and (v or "").strip()
+    }
+    # --- END MODIFICATION ---
+
+
+def get_corpus_model_make_map() -> dict[str, str]:
+    return dict(_CORPUS_MODEL_MAKE)
+
+
+def build_model_make_from_bm25_metas(metas: list[dict] | None) -> dict[str, str]:
+    """
+    Majority make per canonical model from BM25 sidecar metas (in-memory, no Chroma walk).
+    """
+    # --- START MODIFICATION ---
+    from collections import Counter
+
+    votes: dict[str, Counter[str]] = {}
+    for meta in metas or []:
+        raw_model = str((meta or {}).get("model") or "").strip()
+        raw_make = _norm((meta or {}).get("make"))
+        if not raw_model or not raw_make:
+            continue
+        if raw_make not in _KNOWN_MAKES:
+            continue
+        model = dedupe_meta_value(canonical_model(raw_model) or raw_model)
+        if not model or len(_fold_compact(model)) < 3:
+            continue
+        votes.setdefault(model, Counter())[raw_make] += 1
+    return {m: c.most_common(1)[0][0] for m, c in votes.items() if c}
+    # --- END MODIFICATION ---
+
+
 def normalize_query_vehicle(
     make: str | None, model: str | None
 ) -> tuple[str, str]:
     """Normalize planner make/model for Chroma where (canonical model)."""
     # --- START MODIFICATION ---
+    # Remap known model mistaken as make (e.g. make=tucson → hyundai/tucson)
     mo = canonical_model(model or "") if (model or "").strip() else ""
     mo = dedupe_meta_value(mo)
     mk = _norm(make)
+    if not mo and mk:
+        as_model = dedupe_meta_value(canonical_model(mk) or "")
+        if as_model and (
+            as_model in _MODEL_DEFAULT_MAKE or as_model in _CORPUS_MODEL_MAKE
+        ):
+            if mk not in _KNOWN_MAKES or _fold_compact(mk) == _fold_compact(as_model):
+                mo = as_model
+                mk = _MODEL_DEFAULT_MAKE.get(mo) or _CORPUS_MODEL_MAKE.get(mo, "")
     if mo and not mk:
-        mk = _MODEL_DEFAULT_MAKE.get(mo, "")
+        # Static overrides win over corpus for known models
+        mk = _MODEL_DEFAULT_MAKE.get(mo) or _CORPUS_MODEL_MAKE.get(mo, "")
     return mk, mo
     # --- END MODIFICATION ---
 

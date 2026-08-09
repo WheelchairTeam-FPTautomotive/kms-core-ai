@@ -1011,6 +1011,18 @@ def main() -> int:
             f"  rag_grounded_sli={grounded}/{len(rag_rows)} "
             f"handoff_rate={handoffs}/{len(results)}"
         )
+        # --- START MODIFICATION ---
+        # Report-only latency percentiles (do not fail suite on LLM jitter)
+        ms_vals = sorted(int(r.get("ms") or 0) for r in rag_rows)
+        if ms_vals:
+            n = len(ms_vals)
+            p50 = ms_vals[n // 2]
+            p95 = ms_vals[min(n - 1, int(0.95 * (n - 1)))]
+            print(
+                f"  latency_ms p50={p50} p95={p95} max={ms_vals[-1]} "
+                f"mean={sum(ms_vals) // n}"
+            )
+        # --- END MODIFICATION ---
     for bucket, items in sorted(by_bucket.items()):
         ok = sum(1 for r in items if r["ok"])
         print(f"  {bucket}: {ok}/{len(items)}")

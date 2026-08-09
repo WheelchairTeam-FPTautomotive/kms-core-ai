@@ -63,12 +63,20 @@ def _warm_retrieval() -> bool:
         ok = False
     try:
         from utils.bm25_index import get_bm25_sidecar
+        from utils.vehicle_meta import (
+            build_model_make_from_bm25_metas,
+            set_corpus_model_make_map,
+        )
 
         sc = get_bm25_sidecar()
         logger.info(
             "BM25 warm-up %s",
             f"n_chunks={len(sc)}" if sc is not None else "missing",
         )
+        if sc is not None:
+            mapping = build_model_make_from_bm25_metas(sc.metas)
+            set_corpus_model_make_map(mapping)
+            logger.info("Corpus model→make warm n_models=%s", len(mapping))
     except Exception as exc:  # noqa: BLE001
         logger.warning("BM25 warm-up skipped/failed: %s", exc)
     try:
@@ -116,6 +124,10 @@ class SearchRequest(BaseModel):
         default="vi",
         description="UI locale — answer language follows this, not the query language",
     )
+    conversation_context: str = Field(
+        default="",
+        description="Ephemeral prior turns for anaphora + answer tone; not embedded into BM25",
+    )
     # --- END MODIFICATION ---
 
 
@@ -135,6 +147,11 @@ class SearchResponse(BaseModel):
     # --- START MODIFICATION ---
     # Soft RAG→FT handoff telemetry (constrained free-talk; never invent procedures)
     handoff: bool = False
+    answer_path: str | None = None
+    planner_ms: float | None = None
+    retrieve_ms: float | None = None
+    answer_ms: float | None = None
+    total_ms: float | None = None
     # --- END MODIFICATION ---
 
 
@@ -173,6 +190,7 @@ async def search_knowledge_base(payload: SearchRequest):
             payload.query,
             mode=payload.mode,
             language=payload.language,
+            conversation_context=payload.conversation_context or "",
         )
         return result
     except Exception as e:  # noqa: BLE001

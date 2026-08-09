@@ -21,7 +21,8 @@ Intent = Literal["catalog", "procedure", "chitchat", "refuse"]
 
 PLANNER_SYSTEM_PROMPT = (
     "You are an automotive RAG query planner. "
-    "Given a driver utterance, output ONLY valid JSON (no markdown) with keys:\n"
+    "Given a driver utterance (and optional prior conversation), output ONLY valid JSON "
+    "(no markdown) with keys:\n"
     '  intent: "catalog" | "procedure" | "chitchat" | "refuse"\n'
     "  make: lowercase brand or empty string\n"
     "  model: lowercase model (e.g. \"santa fe\", \"accent\") or empty string\n"
@@ -34,7 +35,24 @@ PLANNER_SYSTEM_PROMPT = (
     "- chitchat = greetings, thanks, unrelated small talk\n"
     "- refuse = unsafe bypass/jailbreak requests\n"
     "- Normalize typos (Santafe→santa fe). Never invent repair steps.\n"
+    "- If prior conversation is provided and the current utterance uses anaphora "
+    "(it/that/this/cái đó/chức năng đó/nữa/món này), resolve the referent into "
+    "search_query as a standalone manual phrase (e.g. heated seat shutoff duration). "
+    "Do not leave pronouns in search_query.\n"
+    "- For procedure queries with OEM acronyms (EPB, AEB, ISOFIX), put the English "
+    "OEM term in search_query (e.g. electronic parking brake / EPB switch).\n"
+    "- make is the OEM brand (hyundai/ford/…); model is the product line "
+    "(tucson/ioniq 5/bronco). Never put a model name in make.\n"
     "- Empty string for unknown fields. No null."
+)
+
+_ANAPHORA_RE = re.compile(
+    r"\b("
+    r"it|that|this|those|these|"
+    r"cai\s*do|chuc\s*nang\s*(do|day|nay)|mon\s*(nay|do)|"
+    r"nua|same|again|the\s+number|bao\s*lau"
+    r")\b",
+    re.IGNORECASE,
 )
 
 _LLM_PROVIDERS = frozenset(
@@ -111,7 +129,9 @@ def _sanitize_plan(data: dict[str, Any], original: str) -> PlannedQuery | None:
     )
 
 
-def _call_openai_compatible(query: str, timeout_s: float) -> str:
+def _call_openai_compatible(
+    query: str, timeout_s: float, conversation_context: str = ""
+) -> str:
     from openai import OpenAI
 
     base_url = (settings.openai_base_url or "").rstrip("/")
@@ -122,42 +142,60 @@ def _call_openai_compatible(query: str, timeout_s: float) -> str:
         base_url=base_url,
         timeout=timeout_s,
     )
+    user_content = query
+    if (conversation_context or "").strip():
+        user_content = (
+            f"Prior conversation:\n{conversation_context.strip()}\n\n"
+            f"Current utterance:\n{query}"
+        )
     completion = client.chat.completions.create(
         model=settings.openai_model,
         temperature=0.0,
         max_tokens=120,
         messages=[
             {"role": "system", "content": PLANNER_SYSTEM_PROMPT},
-            {"role": "user", "content": query},
+            {"role": "user", "content": user_content},
         ],
     )
     return (completion.choices[0].message.content or "").strip()
 
 
-def _call_bedrock(query: str) -> str:
+def _call_bedrock(query: str, conversation_context: str = "") -> str:
     from core.aws_client import get_bedrock_runtime_client
 
     client = get_bedrock_runtime_client()
     model_id = settings.bedrock_model_id or "global.amazon.nova-2-lite-v1:0"
+    user_text = query
+    if (conversation_context or "").strip():
+        user_text = (
+            f"Prior conversation:\n{conversation_context.strip()}\n\n"
+            f"Current utterance:\n{query}"
+        )
     response = client.converse(
         modelId=model_id,
-        messages=[{"role": "user", "content": [{"text": query}]}],
+        messages=[{"role": "user", "content": [{"text": user_text}]}],
         system=[{"text": PLANNER_SYSTEM_PROMPT}],
         inferenceConfig={"temperature": 0.0, "maxTokens": 120, "topP": 0.9},
     )
     return response["output"]["message"]["content"][0]["text"].strip()
 
 
-def _invoke_planner_llm(query: str, timeout_s: float) -> str:
+def _invoke_planner_llm(
+    query: str, timeout_s: float, conversation_context: str = ""
+) -> str:
     provider = (settings.llm_provider or "none").strip().lower()
     if provider == "bedrock":
-        return _call_bedrock(query)
+        return _call_bedrock(query, conversation_context=conversation_context)
     if provider in {"ollama", "openai_compatible", "openai", "lmstudio"}:
-        return _call_openai_compatible(query, timeout_s)
+        return _call_openai_compatible(
+            query, timeout_s, conversation_context=conversation_context
+        )
     raise ValueError(f"Unsupported planner provider: {provider}")
 
 
-def _fallback_plan(query: str) -> PlannedQuery:
+def _fallback_plan(
+    query: str, conversation_context: str = ""
+) -> PlannedQuery:
     """Regex/heuristic planner when LLM is down — not the happy path."""
     from utils.query_expand import fold_vi
     from utils.vehicle_meta import KNOWN_MAKES, MODEL_ALIASES, parse_vehicle_metadata
@@ -198,6 +236,15 @@ def _fallback_plan(query: str) -> PlannedQuery:
     else:
         intent = "procedure"
         search_query = query
+        # Anaphora heuristic: stitch last Driver topic when pronouns present
+        ctx = (conversation_context or "").strip()
+        if ctx and _ANAPHORA_RE.search(folded):
+            last_driver = ""
+            for line in ctx.splitlines():
+                if line.lower().startswith("driver:"):
+                    last_driver = line.split(":", 1)[-1].strip()
+            if last_driver:
+                search_query = f"{last_driver} {query}".strip()
 
     return PlannedQuery(
         intent=intent,
@@ -209,23 +256,31 @@ def _fallback_plan(query: str) -> PlannedQuery:
     )
 
 
-def plan_query(query: str, language: str | None = "vi") -> PlannedQuery:
+def plan_query(
+    query: str,
+    language: str | None = "vi",
+    conversation_context: str = "",
+) -> PlannedQuery:
     """
     Produce structured routing plan. Always returns a plan (LLM or fallback).
+    When conversation_context is set, resolve anaphora into search_query.
     """
     _ = language
     original = (query or "").strip()
+    ctx = (conversation_context or "").strip()
     if not original:
         return PlannedQuery("procedure", "", "", "", "", "fallback")
 
     if not planner_enabled():
-        return _fallback_plan(original)
+        return _fallback_plan(original, conversation_context=ctx)
 
     timeout_s = float(getattr(settings, "rag_planner_timeout_s", 4.0))
     start = time.perf_counter()
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(_invoke_planner_llm, original, timeout_s)
+            future = pool.submit(
+                _invoke_planner_llm, original, timeout_s, ctx
+            )
             raw = future.result(timeout=timeout_s)
         data = _extract_json_object(raw)
         planned = _sanitize_plan(data, original) if data else None
@@ -234,7 +289,7 @@ def plan_query(query: str, language: str | None = "vi") -> PlannedQuery:
             logger.info(
                 f"[PLANNER] intent={planned.intent} make={planned.make!r} "
                 f"model={planned.model!r} year={planned.year!r} "
-                f"search={planned.search_query!r} ms={ms}"
+                f"search={planned.search_query!r} ctx={bool(ctx)} ms={ms}"
             )
             return planned
         logger.warning(f"[PLANNER] Invalid JSON after {ms}ms raw={raw[:200]!r}")
@@ -245,10 +300,10 @@ def plan_query(query: str, language: str | None = "vi") -> PlannedQuery:
         ms = int((time.perf_counter() - start) * 1000)
         logger.warning(f"[PLANNER] Failed in {ms}ms: {exc}")
 
-    fb = _fallback_plan(original)
+    fb = _fallback_plan(original, conversation_context=ctx)
     logger.info(
         f"[PLANNER] fallback intent={fb.intent} make={fb.make!r} "
-        f"model={fb.model!r} year={fb.year!r}"
+        f"model={fb.model!r} year={fb.year!r} search={fb.search_query!r}"
     )
     return fb
 

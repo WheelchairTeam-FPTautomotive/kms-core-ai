@@ -18,6 +18,14 @@ logger = setup_logger("answer_generator")
 _BRACKET_META_RE = re.compile(r"\[[^\]]{0,200}\]\s*:?\s*")
 _LEADING_SNIPPET_IDX_RE = re.compile(r"^\s*\d+\.\s*")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+|\n+")
+_WARNING_MARKERS = (
+    "warning",
+    "caution",
+    "danger",
+    "luu y",
+    "canh bao",
+    "chu y",
+)
 
 
 class AnswerGenerator(Protocol):
@@ -58,6 +66,7 @@ def extractive_summary(
     language: str | None = "vi",
 ) -> str:
     from core.locale_messages import not_found_answer
+    from utils.query_expand import fold_vi
 
     if not context_snippets:
         return not_found_answer(language)
@@ -70,7 +79,19 @@ def extractive_summary(
     if not sentences:
         return cleaned[:220]
 
-    summary = " ".join(sentences[:max_sentences])
+    # --- START MODIFICATION ---
+    # Prefer safety/warning sentences when present in the chunk
+    warn_first: list[str] = []
+    rest: list[str] = []
+    for sent in sentences:
+        folded = fold_vi(sent)
+        if any(m in folded for m in _WARNING_MARKERS):
+            warn_first.append(sent)
+        else:
+            rest.append(sent)
+    ordered = warn_first + rest
+    summary = " ".join(ordered[:max_sentences])
+    # --- END MODIFICATION ---
     if len(summary) > 320:
         summary = summary[:317].rstrip() + "..."
     return summary
@@ -197,6 +218,7 @@ def generate_driver_answer(
     context_snippets: list[str],
     provider: str | None = None,
     language: str | None = "vi",
+    conversation_context: str = "",
 ) -> str:
     """
     Produce a short driver-facing answer. Falls back to extractive summary on LLM errors.
@@ -205,9 +227,16 @@ def generate_driver_answer(
     if not context_snippets:
         return extractive_summary([], language=language)
 
+    # --- START MODIFICATION ---
+    ask = query
+    ctx = (conversation_context or "").strip()
+    if ctx:
+        ask = f"Prior conversation:\n{ctx}\n\nCurrent question:\n{query}"
+    # --- END MODIFICATION ---
+
     generator = get_answer_generator(provider, language=language)
     try:
-        answer = generator.generate(query, context_snippets)
+        answer = generator.generate(ask, context_snippets)
         if answer and answer.strip():
             return answer.strip()
     except Exception as exc:
@@ -216,7 +245,11 @@ def generate_driver_answer(
     return extractive_summary(context_snippets, language=language)
 
 
-def generate_free_talk_answer(query: str, language: str | None = "vi") -> str:
+def generate_free_talk_answer(
+    query: str,
+    language: str | None = "vi",
+    conversation_context: str = "",
+) -> str:
     """Casual reply without RAG context; never invent vehicle procedures."""
     from core.locale_messages import (
         free_talk_llm_down,
@@ -228,13 +261,18 @@ def generate_free_talk_answer(query: str, language: str | None = "vi") -> str:
     if provider in {"", "none"}:
         return free_talk_no_llm(language)
 
+    ask = query
+    ctx = (conversation_context or "").strip()
+    if ctx:
+        ask = f"Prior conversation:\n{ctx}\n\nCurrent message:\n{query}"
+
     generator = get_answer_generator(
         provider=provider,
         system_prompt=free_talk_system_prompt(language),
         language=language,
     )
     try:
-        answer = generator.generate(query, [])
+        answer = generator.generate(ask, [])
         if answer and answer.strip():
             return answer.strip()
     except Exception as exc:

@@ -36,6 +36,9 @@ _OEM_SYNONYMS: tuple[tuple[str, list[str]], ...] = (
     ("nuoc rua kinh", ["washer fluid", "washer reservoir"]),
     ("wheel nut", ["lug nut torque", "wheel lug nut", "nut torque"]),
     ("torque", ["wheel nut torque", "lug nut"]),
+    ("phanh tay dien tu", ["electronic parking brake", "EPB switch", "parking brake switch"]),
+    ("phanh tay", ["electronic parking brake", "EPB switch", "parking brake"]),
+    ("epb", ["electronic parking brake", "EPB switch", "parking brake switch"]),
 )
 # --- END MODIFICATION ---
 
@@ -62,6 +65,39 @@ def fold_vi(text: str) -> str:
     lowered = lowered.replace("đ", "d").replace("Đ", "d")
     nfd = unicodedata.normalize("NFD", lowered)
     return "".join(c for c in nfd if unicodedata.category(c) != "Mn")
+    # --- END MODIFICATION ---
+
+
+def matched_oem_token_set(query: str) -> set[str]:
+    """
+    Folded OEM operational tokens for the longest matching synonym family.
+    Empty when the query does not hit any _OEM_SYNONYMS needle.
+    """
+    # --- START MODIFICATION ---
+    folded = fold_vi(query or "")
+    if not folded:
+        return set()
+    for needle, aliases in sorted(_OEM_SYNONYMS, key=lambda kv: -len(kv[0])):
+        if needle not in folded:
+            continue
+        tokens: set[str] = {fold_vi(needle)}
+        for alias in aliases:
+            fa = fold_vi(alias)
+            if fa:
+                tokens.add(fa)
+        return {t for t in tokens if len(t) >= 3}
+    return set()
+    # --- END MODIFICATION ---
+
+
+def cite_text_hits_oem(text: str, tokens: set[str] | None = None, *, query: str = "") -> bool:
+    """True when matched_text contains any token from the OEM family."""
+    # --- START MODIFICATION ---
+    toks = tokens if tokens is not None else matched_oem_token_set(query)
+    if not toks:
+        return False
+    folded = fold_vi(text or "")
+    return any(tok in folded for tok in toks)
     # --- END MODIFICATION ---
 
 

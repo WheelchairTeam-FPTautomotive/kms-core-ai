@@ -234,9 +234,46 @@ def _gate_hits(
     return citations, snippets, best_distance
 
 
+def _rebuild_citation_snippets(citations: list[dict[str, Any]]) -> list[str]:
+    return [
+        f"{idx}. [{c['document_name']} - {c['section']} (Trang {c['page']})]: "
+        f"{c['matched_text']}"
+        for idx, c in enumerate(citations, start=1)
+    ]
+
+
+def _prefer_oem_among_gated(
+    citations: list[dict[str, Any]],
+    query: str,
+) -> list[dict[str, Any]]:
+    """
+    Among already-gated citations only: if query hits an OEM synonym family and
+    top matched_text lacks those tokens, promote first gated cite that has them.
+    Never promotes out-of-gate chunks.
+    """
+    # --- START MODIFICATION ---
+    from utils.query_expand import cite_text_hits_oem, matched_oem_token_set
+
+    if len(citations) < 2:
+        return citations
+    tokens = matched_oem_token_set(query)
+    if not tokens:
+        return citations
+    if cite_text_hits_oem(str(citations[0].get("matched_text") or ""), tokens):
+        return citations
+    for i in range(1, len(citations)):
+        if cite_text_hits_oem(str(citations[i].get("matched_text") or ""), tokens):
+            preferred = citations[i]
+            return [preferred, *citations[:i], *citations[i + 1 :]]
+    return citations
+    # --- END MODIFICATION ---
+
+
 def _gate_hybrid_candidates(
     candidates: list[dict[str, Any]],
     max_distance: float,
+    *,
+    prefer_query: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], float | None]:
     """
     Gate fused candidates using preserved dense_distance and/or CE/BM25 policy.
@@ -246,7 +283,6 @@ def _gate_hybrid_candidates(
     ce_min = float(getattr(settings, "rag_ce_min_score", -2.0))
     bm25_max_rank = int(getattr(settings, "rag_bm25_only_max_rank", 15) or 15)
     citations: list[dict[str, Any]] = []
-    snippets: list[str] = []
     best_distance = None
 
     for cand in candidates:
@@ -278,11 +314,9 @@ def _gate_hybrid_candidates(
             }
         )
 
-    for idx, c in enumerate(citations, start=1):
-        snippets.append(
-            f"{idx}. [{c['document_name']} - {c['section']} (Trang {c['page']})]: "
-            f"{c['matched_text']}"
-        )
+    if prefer_query:
+        citations = _prefer_oem_among_gated(citations, prefer_query)
+    snippets = _rebuild_citation_snippets(citations)
     return citations, snippets, best_distance
     # --- END MODIFICATION ---
 
@@ -340,7 +374,7 @@ def _cascading_retrieve(
         )
         candidates = rerank_candidates(pq, candidates, top_k=max(top_k, 8))
         citations, snippets, best_distance = _gate_hybrid_candidates(
-            candidates, max_distance
+            candidates, max_distance, prefer_query=pq
         )
         # Trim to top_k after gate
         citations = citations[:top_k]
@@ -435,7 +469,9 @@ def _rag_miss_handoff(
 
 
 def solve_automotive_query_live(
-    query: str, language: str | None = "vi"
+    query: str,
+    language: str | None = "vi",
+    conversation_context: str = "",
 ) -> Dict[str, Any]:
     """Live ChromaDB vector retrieval solver with planner routing + distance gate."""
     from utils.corpus_catalog import (
@@ -446,6 +482,9 @@ def solve_automotive_query_live(
     from utils.query_planner import plan_query
 
     start_time = time.time()
+    planner_ms = 0.0
+    retrieve_ms = 0.0
+    answer_ms = 0.0
     logger.info(f"Live RAG processing query: '{query}' language={language}")
 
     is_valid, refusal_reason = check_safety_and_scope(query, language=language)
@@ -459,7 +498,12 @@ def solve_automotive_query_live(
         }
 
     try:
-        planned = plan_query(query, language=language)
+        t_plan = time.time()
+        planned = plan_query(
+            query,
+            language=language,
+            conversation_context=conversation_context or "",
+        )
 
         # --- START MODIFICATION ---
         # Normalize trim aliases (bronco raptor / raptor → bronco) for Chroma where
@@ -476,6 +520,7 @@ def solve_automotive_query_live(
                 make=_n_make or planned.make,
                 model=_n_model or planned.model,
             )
+        planner_ms = (time.time() - t_plan) * 1000
         # --- END MODIFICATION ---
 
         # --- START MODIFICATION ---
@@ -518,7 +563,11 @@ def solve_automotive_query_live(
 
             return {
                 "query": query,
-                "answer": generate_free_talk_answer(query, language=language),
+                "answer": generate_free_talk_answer(
+                    query,
+                    language=language,
+                    conversation_context=conversation_context or "",
+                ),
                 "citations": [],
                 "status": "success",
                 "handoff": False,
@@ -543,6 +592,7 @@ def solve_automotive_query_live(
             retrieval_queries = [planned.search_query, *retrieval_queries]
         logger.info(f"RAG retrieval_queries={retrieval_queries}")
 
+        t_ret = time.time()
         citations, snippets, best_distance, used_where = _cascading_retrieve(
             retrieval_queries,
             top_k=top_k,
@@ -593,6 +643,7 @@ def solve_automotive_query_live(
                 logger.info(
                     "[RAG] Cascade kept=0; rewrite disabled or LLM_PROVIDER=none"
                 )
+        retrieve_ms = (time.time() - t_ret) * 1000
 
         if not snippets:
             elapsed_ms = (time.time() - start_time) * 1000
@@ -611,30 +662,49 @@ def solve_automotive_query_live(
 
         from core.answer_generator import extractive_summary, generate_driver_answer
         from core.grounding import is_ungrounded, parse_grounded_answer
+        from utils.query_expand import cite_text_hits_oem, matched_oem_token_set
 
-        # Citation honesty: LLM soft-deny with retrieved evidence → extractive
-        # (keep cites). Only hand off when there is nothing grounded to quote.
-        raw_answer = generate_driver_answer(query, snippets, language=language)
-        answer, grounded_flag = parse_grounded_answer(raw_answer)
-        if is_ungrounded(answer, grounded_flag):
-            elapsed_ms = (time.time() - start_time) * 1000
-            if snippets:
-                logger.info(
-                    f"Live RAG ungrounded→extractive in {elapsed_ms:.2f}ms "
-                    f"(flag={grounded_flag}, cites={len(citations)})"
-                )
-                answer = extractive_summary(snippets, language=language)
-            else:
-                logger.info(
-                    f"Live RAG ungrounded→handoff in {elapsed_ms:.2f}ms "
-                    f"(flag={grounded_flag}, dropped_cites={len(citations)})"
-                )
-                return _rag_miss_handoff(query, language, reason="ungrounded")
+        # --- START MODIFICATION ---
+        # Extractive-first when top cite already has OEM operational tokens
+        t_ans = time.time()
+        answer_path = "llm"
+        oem_tokens = matched_oem_token_set(query)
+        top_text = str((citations[0] if citations else {}).get("matched_text") or "")
+        if oem_tokens and cite_text_hits_oem(top_text, oem_tokens):
+            answer = extractive_summary(snippets, language=language)
+            answer_path = "extractive_oem"
+            logger.info("RAG answer_path=extractive_oem (skip LLM)")
+        else:
+            raw_answer = generate_driver_answer(
+                query,
+                snippets,
+                language=language,
+                conversation_context=conversation_context or "",
+            )
+            answer, grounded_flag = parse_grounded_answer(raw_answer)
+            if is_ungrounded(answer, grounded_flag):
+                elapsed_ms = (time.time() - start_time) * 1000
+                if snippets:
+                    logger.info(
+                        f"Live RAG ungrounded→extractive in {elapsed_ms:.2f}ms "
+                        f"(flag={grounded_flag}, cites={len(citations)})"
+                    )
+                    answer = extractive_summary(snippets, language=language)
+                    answer_path = "extractive_ungrounded"
+                else:
+                    logger.info(
+                        f"Live RAG ungrounded→handoff in {elapsed_ms:.2f}ms "
+                        f"(flag={grounded_flag}, dropped_cites={len(citations)})"
+                    )
+                    return _rag_miss_handoff(query, language, reason="ungrounded")
+        answer_ms = (time.time() - t_ans) * 1000
         # --- END MODIFICATION ---
 
         elapsed_ms = (time.time() - start_time) * 1000
         logger.info(
-            f"Live RAG response formulated in {elapsed_ms:.2f}ms with {len(citations)} citations."
+            f"Live RAG response formulated in {elapsed_ms:.2f}ms with {len(citations)} citations "
+            f"path={answer_path} planner={planner_ms:.0f} retrieve={retrieve_ms:.0f} "
+            f"answer={answer_ms:.0f}."
         )
 
         return {
@@ -643,6 +713,11 @@ def solve_automotive_query_live(
             "citations": citations,
             "status": "success",
             "handoff": False,
+            "answer_path": answer_path,
+            "planner_ms": round(planner_ms, 1),
+            "retrieve_ms": round(retrieve_ms, 1),
+            "answer_ms": round(answer_ms, 1),
+            "total_ms": round(elapsed_ms, 1),
         }
 
     except Exception as e:
@@ -656,11 +731,19 @@ def solve_automotive_query_live(
         }
 
 
-def solve_free_talk_query(query: str, language: str | None = "vi") -> Dict[str, Any]:
+def solve_free_talk_query(
+    query: str,
+    language: str | None = "vi",
+    conversation_context: str = "",
+) -> Dict[str, Any]:
     """Free-talk path: no RAG retrieval; LLM or polite redirect."""
     from core.answer_generator import generate_free_talk_answer
 
-    answer = generate_free_talk_answer(query, language=language)
+    answer = generate_free_talk_answer(
+        query,
+        language=language,
+        conversation_context=conversation_context or "",
+    )
     return {
         "query": query,
         "answer": answer,
@@ -671,7 +754,10 @@ def solve_free_talk_query(query: str, language: str | None = "vi") -> Dict[str, 
 
 
 def solve_automotive_query_auto(
-    query: str, mode: str = "rag", language: str | None = "vi"
+    query: str,
+    mode: str = "rag",
+    language: str | None = "vi",
+    conversation_context: str = "",
 ) -> Dict[str, Any]:
     """
     Dispatch by mode and vector_db_type.
@@ -679,13 +765,21 @@ def solve_automotive_query_auto(
     """
     resolved = (mode or "rag").strip().lower()
     if resolved == "free_talk":
-        return solve_free_talk_query(query, language=language)
+        return solve_free_talk_query(
+            query,
+            language=language,
+            conversation_context=conversation_context or "",
+        )
 
     if getattr(settings, "vector_db_type", "chroma") == "opensearch":
         from pipelines.bedrock_rag import solve_automotive_query_bedrock
         return solve_automotive_query_bedrock(query)
 
-    return solve_automotive_query_live(query, language=language)
+    return solve_automotive_query_live(
+        query,
+        language=language,
+        conversation_context=conversation_context or "",
+    )
 
 # if __name__ == "__main__":
 #     parser = argparse.ArgumentParser(description="KMS RAG Offline Evaluator CLI")
