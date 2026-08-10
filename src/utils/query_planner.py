@@ -50,10 +50,100 @@ _ANAPHORA_RE = re.compile(
     r"\b("
     r"it|that|this|those|these|"
     r"cai\s*do|chuc\s*nang\s*(do|day|nay)|mon\s*(nay|do)|"
+    r"no\s+hoat\s+dong|nut\s*bam|vi\s*tri\s*nao|where\s+is\s+it|"
     r"nua|same|again|the\s+number|bao\s*lau"
     r")\b",
     re.IGNORECASE,
 )
+
+# Wave4: STM focus-entity whitelist only (never xe/nó/thông số generics)
+_FOCUS_ENTITY_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("electronic parking brake", "electronic parking brake"),
+    ("phanh do dien tu", "electronic parking brake"),
+    ("phanh dien tu", "electronic parking brake"),
+    ("phanh tay", "electronic parking brake"),
+    ("epb", "EPB"),
+    ("rear window defroster", "rear window defroster"),
+    ("say kinh sau", "rear window defroster"),
+    ("say kinh", "rear window defroster"),
+    ("defroster", "rear window defroster"),
+    ("tire pressure", "tire pressure"),
+    ("ap suat lop", "tire pressure"),
+    ("ap suat", "tire pressure"),
+    ("tpms", "TPMS"),
+    ("wheel nut", "wheel nut torque"),
+    ("lug nut", "wheel nut torque"),
+    ("torque", "wheel nut torque"),
+    ("moc siet", "wheel nut torque"),
+    ("dieu hoa", "HVAC"),
+    ("hvac", "HVAC"),
+    ("air conditioner", "HVAC"),
+    ("ioniq", "ioniq"),
+    ("tucson", "tucson"),
+    ("accent", "accent"),
+    ("seltos", "seltos"),
+    ("camry", "camry"),
+    ("raptor", "raptor"),
+    ("santa fe", "santa fe"),
+    ("santafe", "santa fe"),
+)
+
+_GENERIC_FOCUS_BLOCK = re.compile(
+    r"^(?:xe|no|it|thong\s*so|he\s*thong|nut|cai|this|that|the\s+car|the\s+vehicle)\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_focus_entity(prior_text: str) -> str | None:
+    """Whitelist-only focus entity from prior Driver turns."""
+    from utils.query_expand import fold_vi
+
+    folded = fold_vi(prior_text or "")
+    if not folded or _GENERIC_FOCUS_BLOCK.search(folded):
+        # Still allow whitelist hits inside longer prior turns
+        pass
+    best: tuple[int, str] | None = None
+    for needle, canonical in _FOCUS_ENTITY_PATTERNS:
+        nf = fold_vi(needle)
+        if nf and nf in folded:
+            if best is None or len(nf) > best[0]:
+                best = (len(nf), canonical)
+    if best is None:
+        return None
+    entity = best[1]
+    if _GENERIC_FOCUS_BLOCK.match(fold_vi(entity)):
+        return None
+    return entity
+
+
+def _stm_rewrite_followup(query: str, conversation_context: str) -> str | None:
+    """
+    Rewrite short anaphoric follow-ups to '{focus_entity} {followup}'
+    only when a whitelisted entity is found in prior Driver turns.
+    """
+    from utils.query_expand import fold_vi
+
+    ctx = (conversation_context or "").strip()
+    if not ctx:
+        return None
+    folded = fold_vi(query)
+    if not _ANAPHORA_RE.search(folded):
+        return None
+
+    prior_driver_bits: list[str] = []
+    for line in ctx.splitlines():
+        if line.lower().startswith("driver:"):
+            prior_driver_bits.append(line.split(":", 1)[-1].strip())
+    if not prior_driver_bits:
+        return None
+
+    focus = _extract_focus_entity(" ".join(prior_driver_bits))
+    if not focus:
+        return None
+
+    rewritten = f"{focus} {query}".strip()
+    logger.info(f"[STM-Rewrite] focus={focus!r} from={query!r} to={rewritten!r}")
+    return rewritten
 
 _LLM_PROVIDERS = frozenset(
     {"ollama", "openai_compatible", "openai", "lmstudio", "bedrock"}
@@ -236,15 +326,12 @@ def _fallback_plan(
     else:
         intent = "procedure"
         search_query = query
-        # Anaphora heuristic: stitch last Driver topic when pronouns present
+        # Wave4: whitelist focus-entity STM rewrite (never stitch full prior turn)
         ctx = (conversation_context or "").strip()
-        if ctx and _ANAPHORA_RE.search(folded):
-            last_driver = ""
-            for line in ctx.splitlines():
-                if line.lower().startswith("driver:"):
-                    last_driver = line.split(":", 1)[-1].strip()
-            if last_driver:
-                search_query = f"{last_driver} {query}".strip()
+        if ctx and _ANAPHORA_RE.search(fold_vi(query)):
+            rewritten = _stm_rewrite_followup(query, ctx)
+            if rewritten:
+                search_query = rewritten
 
     return PlannedQuery(
         intent=intent,

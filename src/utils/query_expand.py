@@ -22,7 +22,7 @@ _DOMAIN_ALIASES: dict[str, list[str]] = {
 }
 
 # --- START MODIFICATION ---
-# OEM / procedure synonyms for hybrid BM25 (ISOFIX, MIST, VI defrost, seat memory)
+# OEM / procedure synonyms for hybrid BM25 (ISOFIX, MIST, VI defrost, seat memory, EPB, TPMS)
 _OEM_SYNONYMS: tuple[tuple[str, list[str]], ...] = (
     ("isofix", ["latch", "child restraint anchor", "lower anchors"]),
     ("latch", ["isofix", "child restraint"]),
@@ -35,10 +35,16 @@ _OEM_SYNONYMS: tuple[tuple[str, list[str]], ...] = (
     ("washer fluid", ["washer reservoir", "windshield washer"]),
     ("nuoc rua kinh", ["washer fluid", "washer reservoir"]),
     ("wheel nut", ["lug nut torque", "wheel lug nut", "nut torque"]),
+    ("moc siet", ["wheel nut torque", "lug nut torque", "wheel lug nut"]),
     ("torque", ["wheel nut torque", "lug nut"]),
+    ("phanh do dien tu", ["electronic parking brake", "EPB switch", "parking brake switch"]),
+    ("phanh dien tu", ["electronic parking brake", "EPB switch", "parking brake"]),
     ("phanh tay dien tu", ["electronic parking brake", "EPB switch", "parking brake switch"]),
     ("phanh tay", ["electronic parking brake", "EPB switch", "parking brake"]),
     ("epb", ["electronic parking brake", "EPB switch", "parking brake switch"]),
+    ("ap suat lop", ["tire pressure", "TPMS", "tire pressure monitoring"]),
+    ("ap suat", ["tire pressure", "TPMS"]),
+    ("tpms", ["tire pressure monitoring system", "tire pressure"]),
 )
 # --- END MODIFICATION ---
 
@@ -115,6 +121,19 @@ def _extract_topic(folded: str) -> str | None:
             if topic:
                 return topic
     return None
+
+
+def oem_english_search_phrase(query: str) -> str | None:
+    """Primary English OEM manual phrase when query hits a synonym family."""
+    # --- START MODIFICATION ---
+    folded = fold_vi(query or "")
+    if not folded:
+        return None
+    for needle, aliases in sorted(_OEM_SYNONYMS, key=lambda kv: -len(kv[0])):
+        if needle in folded and aliases:
+            return aliases[0].strip()
+    return None
+    # --- END MODIFICATION ---
 
 
 def expand_retrieval_queries(query: str) -> list[str]:

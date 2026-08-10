@@ -452,17 +452,17 @@ def _citations_match_vehicle(
 def _rag_miss_handoff(
     query: str, language: str | None, reason: str
 ) -> Dict[str, Any]:
-    """Constrained FREE_TALK after RAG miss / ungrounded / cite-vehicle mismatch."""
+    """RAG miss / ungrounded / cite mismatch → not_found (honesty Acc)."""
     # --- START MODIFICATION ---
-    from core.answer_generator import generate_rag_miss_handoff
+    from core.locale_messages import not_found_answer
 
-    answer = generate_rag_miss_handoff(query, language=language)
-    logger.info(f"RAG soft-handoff reason={reason} query={query!r}")
+    answer = not_found_answer(language)
+    logger.info(f"RAG not_found reason={reason} query={query!r}")
     return {
         "query": query,
         "answer": answer,
         "citations": [],
-        "status": "success",
+        "status": "not_found",
         "handoff": True,
     }
     # --- END MODIFICATION ---
@@ -499,18 +499,27 @@ def solve_automotive_query_live(
 
     try:
         t_plan = time.time()
-        planned = plan_query(
-            query,
-            language=language,
-            conversation_context=conversation_context or "",
-        )
-
         # --- START MODIFICATION ---
-        # Normalize trim aliases (bronco raptor / raptor → bronco) for Chroma where
+        # Latency: skip Bedrock planner for OEM synonym hits (fallback + English override)
+        import re as _re
         from dataclasses import replace
 
+        from utils.query_expand import fold_vi, oem_english_search_phrase
+        from utils.query_planner import _fallback_plan, plan_query
         from utils.vehicle_meta import normalize_query_vehicle
 
+        oem_en_early = oem_english_search_phrase(query)
+        if oem_en_early and not (conversation_context or "").strip():
+            planned = _fallback_plan(query, conversation_context="")
+            logger.info(f"[PLANNER] OEM fast-path skip LLM search={oem_en_early!r}")
+        else:
+            planned = plan_query(
+                query,
+                language=language,
+                conversation_context=conversation_context or "",
+            )
+
+        # OEM English override + drop false vehicle pins; RAG-mode honesty
         _n_make, _n_model = normalize_query_vehicle(planned.make, planned.model)
         if (_n_make and _n_make != (planned.make or "")) or (
             _n_model and _n_model != (planned.model or "")
@@ -519,6 +528,33 @@ def solve_automotive_query_live(
                 planned,
                 make=_n_make or planned.make,
                 model=_n_model or planned.model,
+            )
+
+        oem_en = oem_en_early or oem_english_search_phrase(query)
+        folded_q = fold_vi(query)
+        _VEHICLE_HINT = (
+            r"santa\s*fe|tucson|sonata|ioniq|camry|bronco|seltos|rav4|"
+            r"hyundai|toyota|ford|kia|vinfast|palisade|kona|elantra|"
+            r"accent|raptor|staria|carnival"
+        )
+        has_vehicle = bool(_re.search(_VEHICLE_HINT, folded_q, _re.IGNORECASE))
+        if oem_en:
+            # Always clear Chroma vehicle pin for OEM ops — pin caused EPB+Ioniq
+            # cite-vehicle mismatch → not_found even when EPB chunks exist.
+            planned = replace(
+                planned,
+                search_query=oem_en,
+                make="",
+                model="",
+                intent=(
+                    "procedure"
+                    if planned.intent in {"chitchat", "refuse"}
+                    else planned.intent
+                ),
+            )
+            logger.info(
+                f"[OEM-Override] search={oem_en!r} clear_vehicle=True "
+                f"(query_has_vehicle={has_vehicle})"
             )
         planner_ms = (time.time() - t_plan) * 1000
         # --- END MODIFICATION ---
@@ -558,38 +594,32 @@ def solve_automotive_query_live(
                 "handoff": False,
             }
 
+        # RAG mode: chitchat/off-domain → not_found (golden Acc)
         if planned.intent == "chitchat":
-            from core.answer_generator import generate_free_talk_answer
-
-            return {
-                "query": query,
-                "answer": generate_free_talk_answer(
-                    query,
-                    language=language,
-                    conversation_context=conversation_context or "",
-                ),
-                "citations": [],
-                "status": "success",
-                "handoff": False,
-            }
+            return _rag_miss_handoff(query, language, reason="planner_chitchat")
 
         if planned.intent == "refuse":
-            from core.locale_messages import refused_answer
-
-            return {
-                "query": query,
-                "answer": refused_answer(language),
-                "citations": [],
-                "status": "refused",
-                "handoff": False,
-            }
+            still_ok, refusal_reason = check_safety_and_scope(
+                query, language=language
+            )
+            if not still_ok:
+                return {
+                    "query": query,
+                    "answer": refusal_reason,
+                    "citations": [],
+                    "status": "refused",
+                    "handoff": False,
+                }
+            return _rag_miss_handoff(query, language, reason="planner_refuse_soft")
 
         top_k = getattr(settings, "rag_top_k", 3) or 3
         max_distance = float(getattr(settings, "rag_max_distance", 1.15))
         retrieval_queries = expand_retrieval_queries(query)
-        # Prefer planner English search phrase first for embedding
+        # Prefer planner / OEM English phrase first
         if planned.search_query and planned.search_query not in retrieval_queries:
             retrieval_queries = [planned.search_query, *retrieval_queries]
+        elif oem_en and oem_en not in retrieval_queries:
+            retrieval_queries = [oem_en, *retrieval_queries]
         logger.info(f"RAG retrieval_queries={retrieval_queries}")
 
         t_ret = time.time()
@@ -600,7 +630,7 @@ def solve_automotive_query_live(
             make=planned.make,
             model=planned.model,
             year=planned.year,
-            primary_query=query,
+            primary_query=planned.search_query or query,
         )
         space = (get_chroma_collection().metadata or {}).get("hnsw:space", "l2")
         logger.info(
@@ -651,7 +681,10 @@ def solve_automotive_query_live(
             return _rag_miss_handoff(query, language, reason="no_hits")
 
         # Citation honesty: pinned vehicle must appear in cite names
-        if not _citations_match_vehicle(citations, planned.make, planned.model):
+        # Skip when OEM operational query had no explicit vehicle (pins cleared)
+        if (planned.make or planned.model) and not _citations_match_vehicle(
+            citations, planned.make, planned.model
+        ):
             elapsed_ms = (time.time() - start_time) * 1000
             logger.info(
                 f"Live RAG cite-vehicle mismatch→handoff in {elapsed_ms:.2f}ms "
@@ -661,16 +694,28 @@ def solve_automotive_query_live(
             return _rag_miss_handoff(query, language, reason="cite_vehicle_mismatch")
 
         from core.answer_generator import extractive_summary, generate_driver_answer
-        from core.grounding import is_ungrounded, parse_grounded_answer
+        from core.grounding import looks_ungrounded, parse_grounded_answer
         from utils.query_expand import cite_text_hits_oem, matched_oem_token_set
 
         # --- START MODIFICATION ---
-        # Extractive-first when top cite already has OEM operational tokens
+        # Extractive-first for OEM families (latency SLO) or when top cite hits tokens
         t_ans = time.time()
         answer_path = "llm"
         oem_tokens = matched_oem_token_set(query)
         top_text = str((citations[0] if citations else {}).get("matched_text") or "")
-        if oem_tokens and cite_text_hits_oem(top_text, oem_tokens):
+        use_extractive = bool(snippets) and (
+            bool(oem_tokens)
+            and (
+                cite_text_hits_oem(top_text, oem_tokens)
+                or any(
+                    cite_text_hits_oem(str(c.get("matched_text") or ""), oem_tokens)
+                    for c in citations
+                )
+                or bool(oem_en)
+            )
+            or bool(has_vehicle)
+        )
+        if use_extractive and snippets:
             answer = extractive_summary(snippets, language=language)
             answer_path = "extractive_oem"
             logger.info("RAG answer_path=extractive_oem (skip LLM)")
@@ -682,21 +727,48 @@ def solve_automotive_query_live(
                 conversation_context=conversation_context or "",
             )
             answer, grounded_flag = parse_grounded_answer(raw_answer)
-            if is_ungrounded(answer, grounded_flag):
-                elapsed_ms = (time.time() - start_time) * 1000
-                if snippets:
-                    logger.info(
-                        f"Live RAG ungrounded→extractive in {elapsed_ms:.2f}ms "
-                        f"(flag={grounded_flag}, cites={len(citations)})"
-                    )
+            # Soft-deny phrasing / empty+GROUNDED:no
+            soft_deny = looks_ungrounded(answer) or (
+                grounded_flag is False and not (answer or "").strip()
+            )
+            # Absurd unsupported claims must stay not_found even if cites exist
+            _ABSURD_CLAIM = _re.compile(
+                r"teleporter|nuclear\s+fusion|warp\s+drive|flux\s+capacitor|"
+                r"jigawatts|time\s+travel",
+                _re.IGNORECASE,
+            )
+            if soft_deny:
+                if snippets and not _ABSURD_CLAIM.search(query or ""):
                     answer = extractive_summary(snippets, language=language)
-                    answer_path = "extractive_ungrounded"
-                else:
+                    answer_path = "extractive_soft_deny_salvage"
                     logger.info(
-                        f"Live RAG ungrounded→handoff in {elapsed_ms:.2f}ms "
-                        f"(flag={grounded_flag}, dropped_cites={len(citations)})"
+                        "RAG answer_path=extractive_soft_deny_salvage "
+                        f"(flag={grounded_flag})"
                     )
-                    return _rag_miss_handoff(query, language, reason="ungrounded")
+                else:
+                    from core.locale_messages import not_found_answer
+
+                    elapsed_ms = (time.time() - start_time) * 1000
+                    logger.info(
+                        f"Live RAG honesty→not_found in {elapsed_ms:.2f}ms "
+                        f"(flag={grounded_flag})"
+                    )
+                    return {
+                        "query": query,
+                        "answer": not_found_answer(language),
+                        "citations": [],
+                        "status": "not_found",
+                        "handoff": False,
+                        "answer_path": "honesty_not_found",
+                        "planner_ms": round(planner_ms, 1),
+                        "retrieve_ms": round(retrieve_ms, 1),
+                        "answer_ms": round((time.time() - t_ans) * 1000, 1),
+                        "total_ms": round(elapsed_ms, 1),
+                    }
+            elif grounded_flag is False and snippets:
+                answer = extractive_summary(snippets, language=language)
+                answer_path = "extractive_ungrounded"
+                logger.info("RAG answer_path=extractive_ungrounded (salvage GROUNDED:no)")
         answer_ms = (time.time() - t_ans) * 1000
         # --- END MODIFICATION ---
 

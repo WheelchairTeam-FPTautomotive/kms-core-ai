@@ -15,8 +15,20 @@ def test_fallback_anaphora_stitches_prior_driver_topic():
         conversation_context=ctx,
     )
     assert planned.intent == "procedure"
-    assert "sấy" in planned.search_query.lower() or "kinh" in planned.search_query.lower()
-    assert "chức năng đó" in planned.search_query.lower() or "bao lâu" in planned.search_query.lower()
+    # Wave4: whitelist focus entity (say kinh → rear window defroster), not full prior turn
+    sq = planned.search_query.lower()
+    assert "rear window" in sq or "defrost" in sq
+    assert "bao lâu" in sq or "chức năng" in sq
+
+
+def test_fallback_anaphora_skips_generic_focus():
+    ctx = "Driver: Thông số xe này thế nào\nAssistant: Please specify the feature."
+    planned = _fallback_plan(
+        "nó hoạt động thế nào?",
+        conversation_context=ctx,
+    )
+    # No whitelist hit → pass through unchanged
+    assert planned.search_query == "nó hoạt động thế nào?"
 
 
 def test_fallback_no_context_keeps_raw():
